@@ -6,8 +6,13 @@ import streamlit as st
 from dotenv import load_dotenv
 from litellm import completion
 
-# Charger les variables d'environnement
+# Charger les variables d'environnement (local via .env, cloud via st.secrets)
 load_dotenv()
+try:
+    for key, value in st.secrets.items():
+        os.environ.setdefault(key, str(value))
+except st.errors.StreamlitSecretNotFoundError:
+    pass
 
 # Configuration de la page
 st.set_page_config(
