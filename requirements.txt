@@ -1,0 +1,17 @@
+langgraph==1.1.6
+langchain-core>=0.3.29
+langchain-openai>=0.3.8
+langgraph-checkpoint-sqlite>=2.0.6
+python-dotenv>=1.0.1
+duckdb>=1.1.0
+pandas>=2.2.0
+plotly>=5.24.0
+matplotlib>=3.9.0
+openpyxl>=3.1.5
+python-pptx>=0.6.23
+pydantic>=2.9.0
+streamlit>=1.40.0
+mcp>=1.0.0
+litellm>=1.50.0
+watchdog>=5.0.0
+numpy>=1.26.0

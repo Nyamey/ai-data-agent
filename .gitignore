@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Données
+data/*.csv
+data/*.xlsx
+data/*.parquet
+data/**/*.csv
+!data/sample_data.csv
+data/agent_memory.db
+data/analytics.duckdb
+
+# Outputs
+outputs/
+*.xlsx
+*.pptx
+*.pdf
+
+# Environnement
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+.cursor/
+
+# OS
+Thumbs.db
+
+# DuckDB
+*.duckdb
+*.duckdb.wal
