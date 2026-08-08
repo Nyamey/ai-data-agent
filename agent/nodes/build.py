@@ -1,7 +1,5 @@
 # agent/nodes/build.py — Nœud 3 : Construction des analyses
-import json
 from agent.state import AgentState, AnalysisStatus
-from agent.llm.config import get_llm_response
 from agent.tools.data_loader import execute_query
 
 

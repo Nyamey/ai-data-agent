@@ -4,7 +4,6 @@ import io
 import os
 import re
 import zipfile
-import tempfile
 from datetime import datetime
 import numpy as np
 import pandas as pd
