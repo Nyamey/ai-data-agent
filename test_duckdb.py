@@ -2,7 +2,7 @@
 from agent.tools.data_loader import load_data, execute_query
 
 # Charger le fichier CSV
-result = load_data("C:/Users/nyame/Downloads/data csv/customer_retention_data.csv")
+result = load_data("data/sample_data.csv")
 
 print("=== Inspection des données ===")
 print(f"Table : {result['table_name']}")
@@ -16,9 +16,9 @@ print()
 # Tester une requête
 print("=== Top 5 clients par activité ===")
 print(execute_query("""
-    SELECT customer_id, COUNT(*) as nb_activites 
-    FROM customer_retention_data 
-    GROUP BY customer_id 
-    ORDER BY nb_activites DESC 
+    SELECT customer_id, COUNT(*) as nb_activites
+    FROM sample_data
+    GROUP BY customer_id
+    ORDER BY nb_activites DESC
     LIMIT 5
 """))

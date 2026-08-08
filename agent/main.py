@@ -65,6 +65,6 @@ def run_analysis(query: str, data_path: str, language: str = "fr"):
 if __name__ == "__main__":
     result = run_analysis(
         query="Identifie ce qui explique la récente baisse de rétention client",
-        data_path="C:/Users/nyame/Downloads/data csv/customer_retention_data.csv",
+        data_path="data/sample_data.csv",
         language="fr",
     )
