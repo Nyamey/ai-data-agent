@@ -16,9 +16,11 @@ cp .env.example .env             # renseignez au moins une clé API
 ## Workflow de contribution
 
 1. **Forkez** le dépôt et créez une branche à partir de `main` :
+
    ```bash
    git checkout -b feat/ma-fonctionnalite
    ```
+
 2. Faites vos modifications avec des commits clairs et atomiques.
 3. Vérifiez que le projet démarre (`streamlit run app.py`, `python -m agent.main`).
 4. Poussez votre branche et ouvrez une **Pull Request** vers `main`.
@@ -43,6 +45,7 @@ La [roadmap du README](README.md#roadmap) liste les chantiers ouverts, notamment
 ## Signaler un bug
 
 Ouvrez une [issue](https://github.com/Nyamey/ai-data-agent/issues) en décrivant :
+
 - ce que vous attendiez et ce qui s'est produit,
 - les étapes pour reproduire,
 - votre version de Python et le provider LLM utilisé.

@@ -41,14 +41,14 @@ La plupart des outils « text-to-SQL » sautent directement à la requête et pr
 
 Le cœur du système est un graphe LangGraph. Après l'inspection, une arête conditionnelle renvoie vers un point de contrôle humain ; l'analyse ne se poursuit qu'après approbation.
 
-```
+```text
 Cadrage → Inspection → [Approbation humaine] → Construction → Test → Validation → Recommandations
                             │ (rejet)
                             └────────────► Fin
 ```
 
 | Étape | Nœud | Rôle |
-|-------|------|------|
+| --- | --- | --- |
 | 1. Cadrage | `framing` | Définit la métrique, reformule la question, fixe la période de comparaison et les hypothèses |
 | 2. Inspection | `inspection` | Charge les données dans DuckDB et en extrait les métadonnées |
 | 3. Approbation | `approval` | Point de contrôle humain — attend une validation explicite |
@@ -62,7 +62,7 @@ Un schéma détaillé est disponible dans [`docs/architecture.svg`](docs/archite
 ### Stack technique
 
 | Domaine | Technologie |
-|---------|-------------|
+| --- | --- |
 | Orchestration d'agent | LangGraph 1.1 + LangChain Core |
 | Persistance de l'état | SQLite (checkpointer LangGraph) |
 | Moteur analytique | DuckDB |
@@ -169,7 +169,7 @@ Le serveur expose DuckDB via le Model Context Protocol, ce qui permet à un assi
 
 ## Structure du projet
 
-```
+```text
 ai-data-agent/
 ├── agent/
 │   ├── graph.py            # Assemblage du graphe LangGraph
