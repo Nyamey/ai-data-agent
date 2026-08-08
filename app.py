@@ -1,11 +1,16 @@
 # app.py — Application Streamlit de base
+import io
 import os
 import re
 import tempfile
+from datetime import datetime
 import numpy as np
 import pandas as pd
 import streamlit as st
 from dotenv import load_dotenv
+from openpyxl import Workbook
+from openpyxl.styles import Font
+from openpyxl.utils.dataframe import dataframe_to_rows
 from litellm import completion
 from litellm.exceptions import RateLimitError, APIError, ServiceUnavailableError
 
@@ -104,6 +109,51 @@ def clean_data(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     }
     return df, report
 
+
+def build_markdown_report(query: str, model_used: str, df: pd.DataFrame, analysis_text: str, timestamp: str) -> str:
+    """Assemble un rapport Markdown autonome (question + données + analyse)."""
+    return "\n".join([
+        f"# Rapport d'analyse — {timestamp}",
+        "",
+        f"**Question :** {query}",
+        f"**Modèle utilisé :** {model_used}",
+        f"**Lignes analysées (après nettoyage) :** {len(df)}",
+        "",
+        "## Analyse",
+        "",
+        analysis_text,
+    ])
+
+
+def build_excel_report(df: pd.DataFrame, query: str, model_used: str, analysis_text: str) -> bytes:
+    """Génère un classeur Excel en mémoire : données nettoyées + analyse."""
+    wb = Workbook()
+
+    ws_data = wb.active
+    ws_data.title = "Données nettoyées"
+    for row in dataframe_to_rows(df, index=False, header=True):
+        ws_data.append(row)
+    for cell in ws_data[1]:
+        cell.font = Font(bold=True)
+
+    ws_analysis = wb.create_sheet("Analyse")
+    ws_analysis.column_dimensions["A"].width = 100
+    ws_analysis["A1"] = "Question"
+    ws_analysis["A1"].font = Font(bold=True)
+    ws_analysis["A2"] = query
+    ws_analysis["A4"] = "Modèle"
+    ws_analysis["A4"].font = Font(bold=True)
+    ws_analysis["A5"] = model_used
+    ws_analysis["A7"] = "Analyse"
+    ws_analysis["A7"].font = Font(bold=True)
+    for i, line in enumerate(analysis_text.split("\n")):
+        ws_analysis.cell(row=8 + i, column=1, value=line)
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
 # Charger les variables d'environnement (local via .env, cloud via st.secrets)
 load_dotenv()
 try:
@@ -123,6 +173,8 @@ st.set_page_config(
 st.title("Agent IA d'Analyse de Données")
 st.markdown("---")
 
+st.session_state.setdefault("history", [])
+
 # Barre latérale (sidebar)
 with st.sidebar:
     st.header("Configuration")
@@ -134,6 +186,16 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("### À propos")
     st.markdown("Agent IA pour l'analyse de données avec génération de livrables.")
+
+    st.markdown("---")
+    st.markdown("### 🕘 Historique (session en cours)")
+    if not st.session_state["history"]:
+        st.caption("Aucune analyse pour l'instant.")
+    else:
+        for entry in reversed(st.session_state["history"]):
+            with st.expander(f"{entry['timestamp']} — {entry['query'][:40]}"):
+                st.caption(f"Modèle : {entry['model_used']} · {entry['rows']} lignes")
+                st.markdown(entry["answer"])
 
 # Zone principale — deux colonnes
 col1, col2 = st.columns([1, 2])
@@ -195,8 +257,9 @@ with col2:
         st.subheader("Statistiques descriptives")
         st.dataframe(df.describe(), use_container_width=True)
         
-        # Si on a cliqué sur "Lancer l'analyse"
+        # Si on a cliqué sur "Lancer l'analyse" (déclenchement à usage unique)
         if st.session_state.get("analyze"):
+            st.session_state["analyze"] = False
             with st.spinner("Analyse en cours..."):
                 # Préparer le contexte pour le LLM
                 data_summary = f"""
@@ -253,10 +316,57 @@ with col2:
                             continue
 
                     if response is not None:
-                        st.subheader("Analyse de l'IA")
-                        st.markdown(response.choices[0].message.content)
+                        analysis_text = response.choices[0].message.content
+                        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+                        st.session_state["last_result"] = {
+                            "timestamp": timestamp,
+                            "query": query,
+                            "model_used": model,
+                            "rows": len(df),
+                            "answer": analysis_text,
+                            "source": (uploaded_file.name, uploaded_file.size),
+                        }
+                        st.session_state["history"].append(st.session_state["last_result"])
+                        st.session_state["history"] = st.session_state["history"][-20:]
                     else:
+                        st.session_state["last_result"] = None
                         st.error(
                             f"Tous les modèles gratuits sont temporairement indisponibles "
                             f"({provider}). Réessaie dans quelques instants. Détail : {last_error}"
                         )
+
+        # Affichage du dernier résultat — indépendant du déclencheur ci-dessus,
+        # pour que les boutons de téléchargement (qui provoquent un rerun) ne le fassent pas disparaître
+        last_result = st.session_state.get("last_result")
+        if last_result and last_result.get("source") == (uploaded_file.name, uploaded_file.size):
+            st.subheader("Analyse de l'IA")
+            st.markdown(last_result["answer"])
+
+            st.markdown("---")
+            st.subheader("📥 Exporter")
+            dl1, dl2, dl3 = st.columns(3)
+            dl1.download_button(
+                "Rapport (Markdown)",
+                data=build_markdown_report(
+                    last_result["query"], last_result["model_used"], df,
+                    last_result["answer"], last_result["timestamp"],
+                ),
+                file_name="rapport_analyse.md",
+                mime="text/markdown",
+                use_container_width=True,
+            )
+            dl2.download_button(
+                "Données nettoyées (CSV)",
+                data=df.to_csv(index=False).encode("utf-8-sig"),
+                file_name="donnees_nettoyees.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
+            dl3.download_button(
+                "Rapport complet (Excel)",
+                data=build_excel_report(df, last_result["query"], last_result["model_used"], last_result["answer"]),
+                file_name="rapport_analyse.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+            )
