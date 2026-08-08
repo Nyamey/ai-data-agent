@@ -30,7 +30,7 @@ with st.sidebar:
     st.header("Configuration")
     provider = st.selectbox(
         "Provider LLM",
-        ["Groq (Llama 3.3 70B)", "Google Gemini Flash"],
+        ["Groq (Llama 3.3 70B)", "OpenRouter (GPT-OSS 20B, gratuit)"],
         index=0,
     )
     st.markdown("---")
@@ -93,8 +93,8 @@ with col2:
                     model = "groq/llama-3.3-70b-versatile"
                     api_key = os.getenv("GROQ_API_KEY")
                 else:
-                    model = "gemini/gemini-2.5-flash"
-                    api_key = os.getenv("GOOGLE_API_KEY")
+                    model = "openrouter/openai/gpt-oss-20b:free"
+                    api_key = os.getenv("OPENROUTER_API_KEY")
                 
                 prompt = f"""
                 Tu es un analyste de données IA expert.
@@ -111,13 +111,21 @@ with col2:
                 4. Recommandations
                 """
                 
-                response = completion(
-                    model=model,
-                    messages=[{"role": "user", "content": prompt}],
-                    api_key=api_key,
-                    temperature=0.3,
-                    max_tokens=2000,
-                )
-                
-                st.subheader("Analyse de l'IA")
-                st.markdown(response.choices[0].message.content)
+                if not api_key:
+                    st.error(
+                        "Clé API manquante pour ce provider. "
+                        "Vérifie GROQ_API_KEY / OPENROUTER_API_KEY dans tes secrets."
+                    )
+                else:
+                    try:
+                        response = completion(
+                            model=model,
+                            messages=[{"role": "user", "content": prompt}],
+                            api_key=api_key,
+                            temperature=0.3,
+                            max_tokens=2000,
+                        )
+                        st.subheader("Analyse de l'IA")
+                        st.markdown(response.choices[0].message.content)
+                    except Exception as e:
+                        st.error(f"Erreur lors de l'appel au LLM ({provider}) : {e}")
