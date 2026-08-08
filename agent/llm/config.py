@@ -9,7 +9,7 @@ load_dotenv()
 DEFAULT_MODELS = {
     "groq": "groq/llama-3.3-70b-versatile",
     "gemini": "gemini/gemini-2.5-flash",
-    "openrouter": "openrouter/meta-llama/llama-3.3-70b-instruct:free",
+    "openrouter": "openrouter/openai/gpt-oss-20b:free",
     "mistral": "mistral/mistral-large-latest",
 }
 
@@ -23,8 +23,11 @@ def get_llm_response(
 ) -> str:
     """
     Obtient une réponse du LLM avec fallback automatique.
-    
-    Si le provider principal échoue, on bascule vers Gemini.
+
+    Si le provider principal échoue, on bascule vers OpenRouter (modèle
+    gratuit, sans compte de facturation requis -- contrairement à Gemini,
+    dont l'accès via l'API Generative Language nécessite désormais une
+    facturation activée sur de nombreux comptes).
     
     Args:
         messages: Liste de messages au format [{"role": "user", "content": "..."}]
@@ -57,8 +60,8 @@ def get_llm_response(
         )
         return response.choices[0].message.content
     except Exception as e:
-        # Si le provider échoue, essayer Gemini comme fallback
-        if provider != "gemini":
-            print(f"Provider {provider} échoué ({e}). Bascule vers Gemini...")
-            return get_llm_response(messages, provider="gemini", temperature=temperature)
+        # Si le provider échoue, essayer OpenRouter comme fallback
+        if provider != "openrouter":
+            print(f"Provider {provider} échoué ({e}). Bascule vers OpenRouter...")
+            return get_llm_response(messages, provider="openrouter", temperature=temperature)
         raise
