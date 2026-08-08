@@ -17,7 +17,7 @@ La plupart des outils « text-to-SQL » sautent directement à la requête et pr
 - **Cadrer avant de calculer** : définir la métrique de façon opérationnelle et reformuler la question de manière testable évite de partir dans la mauvaise direction.
 - **Human-in-the-loop** : en mode CLI, l'agent marque une pause dans le terminal après l'inspection des données et attend une approbation explicite avant de lancer l'analyse.
 - **Traçabilité** : chaque étape est journalisée dans un *audit trail*, et l'état complet est persisté (SQLite) pour être repris ou audité.
-- **Livrables prêts à l'emploi** : export Markdown, CSV, Excel et PowerPoint depuis l'interface Streamlit (les générateurs Excel/PPTX de l'agent CLI existent mais ne sont pas encore branchés sur sa sortie — voir [roadmap](#roadmap)).
+- **Livrables prêts à l'emploi** : export Markdown, CSV, Excel et PowerPoint depuis l'interface Streamlit (les générateurs Excel/PPTX de l'agent CLI existent mais ne sont pas encore branchés sur sa sortie, voir [roadmap](#roadmap)).
 
 ---
 
@@ -51,7 +51,7 @@ Cadrage → Inspection → [Approbation humaine] → Construction → Test → V
 | --- | --- | --- |
 | 1. Cadrage | `framing` | Définit la métrique, reformule la question, fixe la période de comparaison et les hypothèses |
 | 2. Inspection | `inspection` | Charge les données dans DuckDB et en extrait les métadonnées |
-| 3. Approbation | `approval` | Point de contrôle humain — attend une validation explicite |
+| 3. Approbation | `approval` | Point de contrôle humain attend une validation explicite |
 | 4. Construction | `build` | Calcule la métrique (ex. rétention hebdomadaire, cohortes) via DuckDB |
 | 5. Test | `test` | Compare la métrique selon les dimensions catégorielles |
 | 6. Validation | `validate` | Rapproche les comptes et vérifie la cohérence |
@@ -122,7 +122,7 @@ streamlit run app.py
 
 ![Aperçu de l'application Streamlit : upload multi-fichiers, rapport de nettoyage et aperçu des données](docs/screenshot-app.png)
 
-Chargez jusqu'à 5 fichiers CSV, laissez l'application les nettoyer et les analyser (analyse LLM en une passe), puis exportez le résultat en Markdown, CSV, Excel ou PowerPoint. Cette interface est autonome et ne déclenche pas le workflow d'agent en 7 étapes ni l'étape d'approbation — pour cela, utilisez le mode ligne de commande ci-dessous.
+Chargez jusqu'à 5 fichiers CSV, laissez l'application les nettoyer et les analyser (analyse LLM en une passe), puis exportez le résultat en Markdown, CSV, Excel ou PowerPoint. Cette interface est autonome et ne déclenche pas le workflow d'agent en 7 étapes ni l'étape d'approbation, pour cela, utilisez le mode ligne de commande ci-dessous.
 
 ### Agent en ligne de commande
 
@@ -130,7 +130,7 @@ Chargez jusqu'à 5 fichiers CSV, laissez l'application les nettoyer et les analy
 python -m agent.main
 ```
 
-Cette commande lance directement une démo sur [`data/sample_data.csv`](data/sample_data.csv), un jeu de données synthétique (675 lignes, schéma `customer_id` / `activity_date` / `signup_date` / `platform` / `region` / `segment`) qui simule une vraie baisse de rétention sur les deux dernières semaines côté mobile — reproductible et prêt à l'emploi sans configuration.
+Cette commande lance directement une démo sur [`data/sample_data.csv`](data/sample_data.csv), un jeu de données synthétique (675 lignes, schéma `customer_id` / `activity_date` / `signup_date` / `platform` / `region` / `segment`) qui simule une vraie baisse de rétention sur les deux dernières semaines côté mobile reproductible et prêt à l'emploi sans configuration.
 
 Ou dans votre code, avec vos propres données :
 
@@ -155,7 +155,7 @@ pipeline = StreamingAnalysisPipeline(watch_dir="./data/stream")
 pipeline.start()
 ```
 
-Déposez un CSV dans le dossier surveillé pour déclencher une analyse automatique. Attention : cela exécute le graphe complet, y compris l'étape d'approbation humaine — le pipeline se bloque donc sur l'invite `input()` du terminal jusqu'à validation manuelle, ce qui est peu adapté à un usage réellement non supervisé (voir [roadmap](#roadmap)).
+Déposez un CSV dans le dossier surveillé pour déclencher une analyse automatique. Attention : cela exécute le graphe complet, y compris l'étape d'approbation humaine; le pipeline se bloque donc sur l'invite `input()` du terminal jusqu'à validation manuelle, ce qui est peu adapté à un usage réellement non supervisé (voir [roadmap](#roadmap)).
 
 ### Serveur MCP
 
