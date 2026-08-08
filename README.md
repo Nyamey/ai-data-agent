@@ -29,10 +29,10 @@ La plupart des outils « text-to-SQL » sautent directement à la requête et pr
 - **Analyse des facteurs explicatifs** : comparaison de la métrique selon plusieurs dimensions (plateforme, version, segment, région…).
 - **Étape de validation** : rapprochement des comptes, vérification de reproductibilité et de cohérence des résultats.
 - **Recommandations classées** par impact, faisabilité et délai.
-- **Pipeline de streaming** : surveillance d'un dossier (watchdog) + détection d'anomalies par z-score, qui déclenche une analyse automatique à l'arrivée de nouvelles données.
+- **Pipeline de streaming** : surveillance d'un dossier (watchdog) qui déclenche une analyse automatique à l'arrivée de tout nouveau fichier. Un détecteur d'anomalies par z-score (`AnomalyDetector`) est disponible mais pas encore branché sur cette décision de déclenchement (toute arrivée de fichier lance une analyse, indépendamment d'une anomalie détectée).
 - **Serveur MCP DuckDB** : expose la base analytique aux assistants IA compatibles MCP.
 - **Interface Streamlit** (autonome) : upload jusqu'à 5 fichiers CSV, nettoyage automatique (encodage, séparateur, décimales FR, dates, doublons), historique des analyses en session, analyse LLM en une passe et export Markdown / CSV / Excel / PowerPoint. Note : cette interface n'invoque pas encore l'agent en 7 étapes.
-- **Multi-provider LLM avec fallback** : Groq, Gemini, OpenRouter, Mistral via LiteLLM. L'agent CLI bascule vers Gemini si le provider principal échoue ; l'app Streamlit essaie plusieurs modèles gratuits (Groq, puis OpenRouter) en cascade.
+- **Multi-provider LLM avec fallback** : Groq, Gemini, OpenRouter, Mistral via LiteLLM. L'agent CLI bascule vers Gemini si le provider principal échoue ; dans l'app Streamlit, le choix Groq/OpenRouter est manuel (menu déroulant), et l'option OpenRouter essaie automatiquement plusieurs modèles gratuits en cascade si l'un est rate-limité.
 - **Sécurité** : neutralisation des injections de formule CSV/Excel (CWE-1236) sur les exports, lecture CSV robuste (encodage et séparateur devinés, utile pour les exports Excel FR).
 
 ---
@@ -155,7 +155,7 @@ pipeline = StreamingAnalysisPipeline(watch_dir="./data/stream")
 pipeline.start()
 ```
 
-Déposez un CSV dans le dossier surveillé pour déclencher une analyse automatique.
+Déposez un CSV dans le dossier surveillé pour déclencher une analyse automatique. Attention : cela exécute le graphe complet, y compris l'étape d'approbation humaine — le pipeline se bloque donc sur l'invite `input()` du terminal jusqu'à validation manuelle, ce qui est peu adapté à un usage réellement non supervisé (voir [roadmap](#roadmap)).
 
 ### Serveur MCP
 
@@ -182,7 +182,7 @@ ai-data-agent/
 │   └── streaming/          # Surveillance de dossier + détection d'anomalies
 ├── mcp_server/             # Serveur MCP DuckDB
 ├── app.py                  # Interface Streamlit
-├── docs/                   # Diagramme d'architecture (Mermaid + SVG)
+├── docs/                   # Diagramme d'architecture (Mermaid + SVG) et capture d'écran
 ├── data/
 │   └── sample_data.csv     # Jeu de données d'exemple (seul fichier de data/ suivi par git)
 ├── requirements.txt
@@ -198,6 +198,7 @@ ai-data-agent/
 - [ ] Connecter l'interface Streamlit à l'agent en 7 étapes (aujourd'hui l'app fait une analyse LLM autonome, sans le graphe)
 - [ ] Porter l'approbation human-in-the-loop dans l'interface Streamlit (aujourd'hui en CLI via `input()`)
 - [ ] Passer à un vrai point d'interruption LangGraph (`interrupt`) plutôt qu'un `input()` bloquant
+- [ ] Découpler le pipeline de streaming de l'étape d'approbation bloquante (aujourd'hui incompatible avec un usage non supervisé) et brancher `AnomalyDetector` sur la décision de déclenchement
 - [ ] Rendre le calcul de la métrique agnostique au schéma (actuellement orienté rétention client)
 - [ ] Tests statistiques complets à l'étape de test (significativité)
 - [ ] Brancher les générateurs Excel/PPTX sur la sortie de l'agent
