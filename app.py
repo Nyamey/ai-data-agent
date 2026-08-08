@@ -5,6 +5,15 @@ import pandas as pd
 import streamlit as st
 from dotenv import load_dotenv
 from litellm import completion
+from litellm.exceptions import RateLimitError, APIError, ServiceUnavailableError
+
+# Modèles gratuits OpenRouter, essayés dans l'ordre si l'un est rate-limité
+# (pool partagé entre tous les utilisateurs OpenRouter, donc peu fiable seul)
+OPENROUTER_FREE_MODELS = [
+    "openrouter/openai/gpt-oss-20b:free",
+    "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
+    "openrouter/google/gemma-4-31b-it:free",
+]
 
 # Charger les variables d'environnement (local via .env, cloud via st.secrets)
 load_dotenv()
@@ -88,12 +97,12 @@ with col2:
                 - Premières lignes : {df.head(5).to_dict()}
                 """
                 
-                # Choisir le modèle selon le provider
+                # Choisir la liste de modèles à essayer selon le provider
                 if "Groq" in provider:
-                    model = "groq/llama-3.3-70b-versatile"
+                    candidates = ["groq/llama-3.3-70b-versatile"]
                     api_key = os.getenv("GROQ_API_KEY")
                 else:
-                    model = "openrouter/openai/gpt-oss-20b:free"
+                    candidates = OPENROUTER_FREE_MODELS
                     api_key = os.getenv("OPENROUTER_API_KEY")
                 
                 prompt = f"""
@@ -117,15 +126,27 @@ with col2:
                         "Vérifie GROQ_API_KEY / OPENROUTER_API_KEY dans tes secrets."
                     )
                 else:
-                    try:
-                        response = completion(
-                            model=model,
-                            messages=[{"role": "user", "content": prompt}],
-                            api_key=api_key,
-                            temperature=0.3,
-                            max_tokens=2000,
-                        )
+                    response = None
+                    last_error = None
+                    for model in candidates:
+                        try:
+                            response = completion(
+                                model=model,
+                                messages=[{"role": "user", "content": prompt}],
+                                api_key=api_key,
+                                temperature=0.3,
+                                max_tokens=2000,
+                            )
+                            break
+                        except (RateLimitError, APIError, ServiceUnavailableError) as e:
+                            last_error = e
+                            continue
+
+                    if response is not None:
                         st.subheader("Analyse de l'IA")
                         st.markdown(response.choices[0].message.content)
-                    except Exception as e:
-                        st.error(f"Erreur lors de l'appel au LLM ({provider}) : {e}")
+                    else:
+                        st.error(
+                            f"Tous les modèles gratuits sont temporairement indisponibles "
+                            f"({provider}). Réessaie dans quelques instants. Détail : {last_error}"
+                        )
