@@ -1,4 +1,4 @@
-<svg viewBox="0 0 900 620" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+<svg viewBox="0 0 900 670" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Helvetica, Arial, sans-serif">
   <defs>
     <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
       <path d="M0,0 L8,3 L0,6 Z" fill="#475569"/>
@@ -21,77 +21,82 @@
   <text x="30" y="60" class="caption">État typé (Pydantic) + checkpointing SQLite · point de contrôle humain après l'inspection</text>
 
   <!-- Row 1 -->
-  <rect class="node step" x="30"  y="90" width="150" height="60"/>
-  <text x="105" y="118" text-anchor="middle" class="lbl">1. Cadrage</text>
-  <text x="105" y="136" text-anchor="middle" class="sub">métrique · question</text>
+  <rect class="node step" x="30"  y="145" width="150" height="60"/>
+  <text x="105" y="173" text-anchor="middle" class="lbl">1. Cadrage</text>
+  <text x="105" y="191" text-anchor="middle" class="sub">métrique · question</text>
 
-  <rect class="node step" x="230" y="90" width="150" height="60"/>
-  <text x="305" y="118" text-anchor="middle" class="lbl">2. Inspection</text>
-  <text x="305" y="136" text-anchor="middle" class="sub">schéma · qualité</text>
+  <rect class="node step" x="230" y="145" width="150" height="60"/>
+  <text x="305" y="173" text-anchor="middle" class="lbl">2. Inspection</text>
+  <text x="305" y="191" text-anchor="middle" class="sub">schéma · qualité</text>
 
-  <rect class="node human" x="430" y="90" width="170" height="60"/>
-  <text x="515" y="114" text-anchor="middle" class="lbl">3. Approbation</text>
-  <text x="515" y="132" text-anchor="middle" class="sub">✋ validation humaine</text>
+  <rect class="node human" x="430" y="145" width="170" height="60"/>
+  <text x="515" y="169" text-anchor="middle" class="lbl">3. Approbation</text>
+  <text x="515" y="187" text-anchor="middle" class="sub">validation humaine</text>
 
-  <rect class="node term" x="650" y="90" width="120" height="60"/>
-  <text x="710" y="125" text-anchor="middle" class="lbl">Fin (rejet)</text>
+  <rect class="node term" x="650" y="145" width="150" height="60"/>
+  <text x="725" y="169" text-anchor="middle" class="lbl">Fin</text>
+  <text x="725" y="187" text-anchor="middle" class="sub">rejet ou erreur</text>
 
   <!-- Row 2 -->
-  <rect class="node step" x="430" y="230" width="170" height="60"/>
-  <text x="515" y="258" text-anchor="middle" class="lbl">4. Construction</text>
-  <text x="515" y="276" text-anchor="middle" class="sub">métrique via DuckDB</text>
+  <rect class="node step" x="430" y="285" width="170" height="60"/>
+  <text x="515" y="313" text-anchor="middle" class="lbl">4. Construction</text>
+  <text x="515" y="331" text-anchor="middle" class="sub">métrique via DuckDB</text>
 
-  <rect class="node step" x="230" y="230" width="150" height="60"/>
-  <text x="305" y="258" text-anchor="middle" class="lbl">5. Test</text>
-  <text x="305" y="276" text-anchor="middle" class="sub">facteurs explicatifs</text>
+  <rect class="node step" x="230" y="285" width="150" height="60"/>
+  <text x="305" y="313" text-anchor="middle" class="lbl">5. Test</text>
+  <text x="305" y="331" text-anchor="middle" class="sub">facteurs explicatifs</text>
 
-  <rect class="node step" x="30"  y="230" width="150" height="60"/>
-  <text x="105" y="258" text-anchor="middle" class="lbl">6. Validation</text>
-  <text x="105" y="276" text-anchor="middle" class="sub">cohérence · reproductibilité</text>
+  <rect class="node step" x="30"  y="285" width="150" height="60"/>
+  <text x="105" y="313" text-anchor="middle" class="lbl">6. Validation</text>
+  <text x="105" y="331" text-anchor="middle" class="sub">cohérence · reproductibilité</text>
 
   <!-- Row 3 -->
-  <rect class="node step" x="30"  y="360" width="150" height="60"/>
-  <text x="105" y="388" text-anchor="middle" class="lbl">7. Recommandations</text>
-  <text x="105" y="406" text-anchor="middle" class="sub">impact · faisabilité</text>
+  <rect class="node step" x="30"  y="415" width="150" height="60"/>
+  <text x="105" y="443" text-anchor="middle" class="lbl">7. Recommandations</text>
+  <text x="105" y="461" text-anchor="middle" class="sub">impact · faisabilité</text>
 
-  <rect class="node term" x="230" y="360" width="150" height="60"/>
-  <text x="305" y="388" text-anchor="middle" class="lbl">Livrables</text>
-  <text x="305" y="406" text-anchor="middle" class="sub">Excel · PPTX</text>
+  <rect class="node term" x="230" y="415" width="150" height="60"/>
+  <text x="305" y="439" text-anchor="middle" class="lbl">Fin</text>
+  <text x="305" y="457" text-anchor="middle" class="sub">analyse terminée</text>
 
   <!-- Edges row1 -->
-  <path class="edge" d="M180,120 L228,120" marker-end="url(#arrow)"/>
-  <path class="edge" d="M380,120 L428,120" marker-end="url(#arrow)"/>
-  <path class="edge" d="M600,120 L648,120" marker-end="url(#arrow)"/>
-  <text x="620" y="112" class="sub">rejet</text>
+  <path class="edge" d="M180,175 L228,175" marker-end="url(#arrow)"/>
+  <path class="edge" d="M380,175 L428,175" marker-end="url(#arrow)"/>
+  <text x="386" y="167" class="sub">attente</text>
+  <path class="edge" d="M600,175 L648,175" marker-end="url(#arrow)"/>
+  <text x="608" y="167" class="sub">rejet</text>
+  <!-- inspection -> fin (erreur), arcing above the approval box -->
+  <path class="edge" d="M330,143 Q 515,80 700,143" marker-end="url(#arrow)"/>
+  <text x="485" y="94" class="sub">erreur</text>
   <!-- approval -> build -->
-  <path class="edge" d="M515,150 L515,228" marker-end="url(#arrow)"/>
-  <text x="522" y="195" class="sub">approuvé</text>
+  <path class="edge" d="M515,205 L515,283" marker-end="url(#arrow)"/>
+  <text x="522" y="250" class="sub">approuvé</text>
   <!-- build -> test -> validate -->
-  <path class="edge" d="M430,260 L382,260" marker-end="url(#arrow)"/>
-  <path class="edge" d="M230,260 L182,260" marker-end="url(#arrow)"/>
+  <path class="edge" d="M430,315 L382,315" marker-end="url(#arrow)"/>
+  <path class="edge" d="M230,315 L182,315" marker-end="url(#arrow)"/>
   <!-- validate -> recommend -->
-  <path class="edge" d="M105,290 L105,358" marker-end="url(#arrow)"/>
-  <!-- recommend -> livrables -->
-  <path class="edge" d="M180,390 L228,390" marker-end="url(#arrow)"/>
+  <path class="edge" d="M105,345 L105,413" marker-end="url(#arrow)"/>
+  <!-- recommend -> fin -->
+  <path class="edge" d="M180,445 L228,445" marker-end="url(#arrow)"/>
 
   <!-- Stack band -->
-  <rect x="30" y="480" width="740" height="110" rx="12" fill="#f8fafc" stroke="#e2e8f0"/>
-  <text x="50" y="508" class="lbl">Fondations</text>
+  <rect x="30" y="535" width="740" height="110" rx="12" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="50" y="563" class="lbl">Fondations</text>
 
-  <rect class="node stack" x="50"  y="525" width="130" height="46"/>
-  <text x="115" y="553" text-anchor="middle" class="sub">LangGraph + LangChain</text>
+  <rect class="node stack" x="50"  y="580" width="130" height="46"/>
+  <text x="115" y="608" text-anchor="middle" class="sub">LangGraph + LangChain</text>
 
-  <rect class="node stack" x="200" y="525" width="110" height="46"/>
-  <text x="255" y="553" text-anchor="middle" class="sub">DuckDB</text>
+  <rect class="node stack" x="200" y="580" width="110" height="46"/>
+  <text x="255" y="608" text-anchor="middle" class="sub">DuckDB</text>
 
-  <rect class="node stack" x="330" y="525" width="170" height="46"/>
-  <text x="415" y="547" text-anchor="middle" class="sub">LiteLLM · Groq / Gemini</text>
-  <text x="415" y="563" text-anchor="middle" class="sub">OpenRouter / Mistral</text>
+  <rect class="node stack" x="330" y="580" width="170" height="46"/>
+  <text x="415" y="602" text-anchor="middle" class="sub">LiteLLM · Groq / Gemini</text>
+  <text x="415" y="618" text-anchor="middle" class="sub">OpenRouter / Mistral</text>
 
-  <rect class="node stack" x="520" y="525" width="110" height="46"/>
-  <text x="575" y="553" text-anchor="middle" class="sub">Streamlit</text>
+  <rect class="node stack" x="520" y="580" width="110" height="46"/>
+  <text x="575" y="608" text-anchor="middle" class="sub">Streamlit</text>
 
-  <rect class="node stack" x="650" y="525" width="110" height="46"/>
-  <text x="705" y="547" text-anchor="middle" class="sub">Serveur MCP</text>
-  <text x="705" y="563" text-anchor="middle" class="sub">+ streaming</text>
+  <rect class="node stack" x="650" y="580" width="110" height="46"/>
+  <text x="705" y="602" text-anchor="middle" class="sub">Serveur MCP</text>
+  <text x="705" y="618" text-anchor="middle" class="sub">+ streaming</text>
 </svg>
