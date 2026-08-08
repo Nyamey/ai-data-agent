@@ -13,6 +13,9 @@ from dotenv import load_dotenv
 from openpyxl import Workbook
 from openpyxl.styles import Font
 from openpyxl.utils.dataframe import dataframe_to_rows
+from pptx import Presentation
+from pptx.util import Inches, Pt
+from pptx.dml.color import RGBColor
 from litellm import completion
 
 MAX_FILES = 5
@@ -231,6 +234,84 @@ def build_csv_export(files: list) -> tuple[bytes, str, str]:
             used_names.add(csv_name.lower())
             zf.writestr(csv_name, neutralize_formulas(df).to_csv(index=False))
     return buf.getvalue(), "donnees_nettoyees.zip", "application/zip"
+
+
+def _chunk_text(text: str, max_chars: int = 700) -> list:
+    """Découpe un texte en morceaux d'environ max_chars pour tenir sur des diapositives lisibles."""
+    paragraphs = [p for p in text.split("\n") if p.strip()]
+    chunks, current, current_len = [], [], 0
+    for p in paragraphs:
+        if current_len + len(p) > max_chars and current:
+            chunks.append("\n".join(current))
+            current, current_len = [], 0
+        current.append(p)
+        current_len += len(p)
+    if current:
+        chunks.append("\n".join(current))
+    return chunks or [""]
+
+
+def build_pptx_report(query: str, model_used: str, files: list, analysis_text: str, timestamp: str) -> bytes:
+    """Génère une présentation PowerPoint générique : titre, fichiers analysés, puis l'analyse découpée en diapositives."""
+    prs = Presentation()
+    prs.slide_width = Inches(13.333)
+    prs.slide_height = Inches(7.5)
+    blank = prs.slide_layouts[6]
+
+    slide = prs.slides.add_slide(blank)
+    title_box = slide.shapes.add_textbox(Inches(1), Inches(2.3), Inches(11.3), Inches(1.5))
+    tf = title_box.text_frame
+    tf.word_wrap = True
+    p = tf.paragraphs[0]
+    p.text = "Rapport d'analyse"
+    p.font.size = Pt(40)
+    p.font.bold = True
+    p.font.color.rgb = RGBColor(0x36, 0x25, 0x5C)
+
+    sub_box = slide.shapes.add_textbox(Inches(1), Inches(4.0), Inches(11.3), Inches(2.5))
+    tf2 = sub_box.text_frame
+    tf2.word_wrap = True
+    tf2.paragraphs[0].text = query
+    tf2.paragraphs[0].font.size = Pt(20)
+    p3 = tf2.add_paragraph()
+    p3.text = f"{timestamp} — {model_used}"
+    p3.font.size = Pt(14)
+
+    slide2 = prs.slides.add_slide(blank)
+    box = slide2.shapes.add_textbox(Inches(0.5), Inches(0.3), Inches(12), Inches(1))
+    p = box.text_frame.paragraphs[0]
+    p.text = "Fichiers analysés"
+    p.font.size = Pt(32)
+    p.font.bold = True
+    box2 = slide2.shapes.add_textbox(Inches(0.5), Inches(1.5), Inches(12), Inches(5.5))
+    tf2 = box2.text_frame
+    tf2.word_wrap = True
+    for i, (name, df) in enumerate(files):
+        para = tf2.paragraphs[0] if i == 0 else tf2.add_paragraph()
+        para.text = f"- {name} : {len(df)} lignes"
+        para.font.size = Pt(18)
+
+    chunks = _chunk_text(analysis_text)
+    for i, chunk in enumerate(chunks):
+        slide3 = prs.slides.add_slide(blank)
+        title = "Analyse" if len(chunks) == 1 else f"Analyse ({i + 1}/{len(chunks)})"
+        tbox = slide3.shapes.add_textbox(Inches(0.5), Inches(0.3), Inches(12), Inches(1))
+        tp = tbox.text_frame.paragraphs[0]
+        tp.text = title
+        tp.font.size = Pt(28)
+        tp.font.bold = True
+
+        cbox = slide3.shapes.add_textbox(Inches(0.5), Inches(1.3), Inches(12), Inches(5.9))
+        tf2 = cbox.text_frame
+        tf2.word_wrap = True
+        for j, line in enumerate(chunk.split("\n")):
+            para = tf2.paragraphs[0] if j == 0 else tf2.add_paragraph()
+            para.text = line
+            para.font.size = Pt(14)
+
+    buf = io.BytesIO()
+    prs.save(buf)
+    return buf.getvalue()
 
 
 # Charger les variables d'environnement (local via .env, cloud via st.secrets)
@@ -463,7 +544,7 @@ with col2:
             st.markdown("---")
             st.subheader("Exporter")
             csv_data, csv_name, csv_mime = build_csv_export(cleaned_files)
-            dl1, dl2, dl3 = st.columns(3)
+            dl1, dl2, dl3, dl4 = st.columns(4)
             dl1.download_button(
                 "Rapport (Markdown)",
                 data=build_markdown_report(
@@ -486,5 +567,15 @@ with col2:
                 data=build_excel_report(cleaned_files, last_result["query"], last_result["model_used"], last_result["answer"]),
                 file_name="rapport_analyse.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+            )
+            dl4.download_button(
+                "Présentation (PowerPoint)",
+                data=build_pptx_report(
+                    last_result["query"], last_result["model_used"], cleaned_files,
+                    last_result["answer"], last_result["timestamp"],
+                ),
+                file_name="rapport_analyse.pptx",
+                mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
                 use_container_width=True,
             )
