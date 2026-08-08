@@ -144,7 +144,7 @@ def profile_table(table_name: str) -> str:
         schema = con.execute(f"DESCRIBE {table_name}").fetchall()
         stats = []
 
-        for col_name, col_type in schema:
+        for col_name, col_type, *_ in schema:
             nulls = con.execute(
                 f"SELECT COUNT(*) FROM {table_name} WHERE {col_name} IS NULL"
             ).fetchone()[0]
