@@ -1,0 +1,5 @@
+[theme]
+# Couleur d'accent principale (boutons, onglets actifs, curseur, spinner).
+# Ne pas confondre avec `redColor`, qui pilote st.error() et reste au rouge
+# par défaut : le rouge doit uniquement signaler une erreur à l'utilisateur.
+primaryColor = "#36255C"
