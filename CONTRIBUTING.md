@@ -37,8 +37,8 @@ La [roadmap du README](README.md#roadmap) liste les chantiers ouverts, notamment
 
 - Rendre le calcul de la métrique agnostique au schéma des données.
 - Porter l'approbation human-in-the-loop dans l'interface Streamlit.
+- Découpler le pipeline de streaming de l'étape d'approbation bloquante et brancher `AnomalyDetector` sur la décision de déclenchement.
 - Ajouter une suite de tests et une intégration continue (GitHub Actions).
-- Fournir un jeu de données d'exemple et une démo reproductible.
 
 ## Signaler un bug
 
