@@ -2,9 +2,6 @@
 from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
-from pptx.chart.data import CategoryChartData
-from pptx.enum.chart import XLChartType
-import pandas as pd
 
 
 class PresentationGenerator:
