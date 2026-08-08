@@ -1,4 +1,5 @@
 # app.py — Application Streamlit de base
+import csv
 import io
 import os
 import re
@@ -13,7 +14,6 @@ from openpyxl import Workbook
 from openpyxl.styles import Font
 from openpyxl.utils.dataframe import dataframe_to_rows
 from litellm import completion
-from litellm.exceptions import RateLimitError, APIError, ServiceUnavailableError
 
 MAX_FILES = 5
 
@@ -27,15 +27,29 @@ OPENROUTER_FREE_MODELS = [
 
 DATE_KEYWORDS = ["date", "time", "jour", "mois", "annee", "année", "year"]
 DECIMAL_PATTERN = re.compile(r"^-?\d+,\d+$")
+LEADING_ZERO_PATTERN = re.compile(r"^0\d")
 
 
 def read_csv_robust(uploaded_file) -> tuple[pd.DataFrame, str]:
-    """Lit un CSV en devinant l'encodage et le séparateur (utile pour les exports Excel FR)."""
+    """Lit un CSV en devinant l'encodage et le séparateur (utile pour les exports Excel FR).
+
+    Le séparateur est deviné avec un jeu de délimiteurs restreint (évite que le
+    détecteur automatique de pandas choisisse un caractère au hasard sur un
+    fichier à une seule colonne) ; à défaut de détection fiable, on retombe sur
+    la virgule.
+    """
     last_err = None
     for enc in ["utf-8-sig", "utf-8", "latin-1"]:
         try:
             uploaded_file.seek(0)
-            df = pd.read_csv(uploaded_file, sep=None, engine="python", encoding=enc)
+            sample_bytes = uploaded_file.read(8192)
+            sample_text = sample_bytes.decode(enc, errors="ignore")
+            uploaded_file.seek(0)
+            try:
+                sep = csv.Sniffer().sniff(sample_text, delimiters=",;\t|").delimiter
+            except csv.Error:
+                sep = ","
+            df = pd.read_csv(uploaded_file, sep=sep, encoding=enc)
             return df, enc
         except Exception as e:
             last_err = e
@@ -70,9 +84,14 @@ def clean_data(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
             df[col] = df[col].astype(str).str.replace(",", ".", regex=False)
             converted_decimal.append(col)
 
-    # Colonnes numériques stockées en texte
+    # Colonnes numériques stockées en texte (on protège les identifiants à
+    # zéros non significatifs, ex. codes postaux "00501", pour ne pas les
+    # convertir en nombres et perdre les zéros de tête)
     converted_numeric = []
     for col in df.select_dtypes(include=["object", "str"]).columns:
+        sample = df[col].dropna().astype(str)
+        if len(sample) > 0 and sample.str.match(LEADING_ZERO_PATTERN).mean() > 0.3:
+            continue
         converted = pd.to_numeric(df[col], errors="coerce")
         non_null = df[col].notna().sum()
         if non_null > 0 and converted.notna().sum() / non_null > 0.9:
@@ -115,7 +134,7 @@ def clean_data(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
 
 def sanitize_sheet_name(name: str, used: set) -> str:
     """Rend un nom de fichier compatible avec les contraintes de nom d'onglet Excel (31 car., uniques)."""
-    base = re.sub(r"[:\\/?*\[\]]", "_", name.rsplit(".", 1)[0])[:31]
+    base = re.sub(r"[:\\/?*\[\]]", "_", name.rsplit(".", 1)[0])[:31] or "Feuille"
     candidate = base
     i = 2
     while candidate in used:
@@ -181,9 +200,16 @@ def build_csv_export(files: list) -> tuple[bytes, str, str]:
         return df.to_csv(index=False).encode("utf-8-sig"), "donnees_nettoyees.csv", "text/csv"
 
     buf = io.BytesIO()
+    used_names = set()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for name, df in files:
-            csv_name = re.sub(r"\.csv$", "", name, flags=re.IGNORECASE) + "_nettoye.csv"
+            base = re.sub(r"\.csv$", "", name, flags=re.IGNORECASE)
+            csv_name = f"{base}_nettoye.csv"
+            i = 2
+            while csv_name.lower() in used_names:
+                csv_name = f"{base}_nettoye_{i}.csv"
+                i += 1
+            used_names.add(csv_name.lower())
             zf.writestr(csv_name, df.to_csv(index=False))
     return buf.getvalue(), "donnees_nettoyees.zip", "application/zip"
 
@@ -264,15 +290,26 @@ with col2:
     st.header("Résultats")
 
     if uploaded_files:
-        # Charger, nettoyer et prétraiter chaque fichier
+        # Charger, nettoyer et prétraiter chaque fichier — une erreur sur un
+        # fichier (encodage/format invalide) ne doit pas faire échouer les autres.
         cleaned_files = []  # list of (name, df)
+        # Liste positionnelle (pas un dict par nom : deux fichiers peuvent
+        # porter le même nom, ce qui écraserait silencieusement l'entrée).
+        describe_list = []
         tabs = st.tabs([f.name for f in uploaded_files])
         for tab, file in zip(tabs, uploaded_files):
-            raw_df, encoding_used = read_csv_robust(file)
-            df, cleaning_report = clean_data(raw_df)
-            cleaned_files.append((file.name, df))
-
             with tab:
+                try:
+                    raw_df, encoding_used = read_csv_robust(file)
+                    df, cleaning_report = clean_data(raw_df)
+                except Exception as e:
+                    st.error(f"Impossible de lire ce fichier : {e}")
+                    continue
+
+                cleaned_files.append((file.name, df))
+                file_describe = df.describe()
+                describe_list.append(file_describe)
+
                 with st.expander("Rapport de nettoyage des données", expanded=False):
                     c1, c2, c3 = st.columns(3)
                     c1.metric("Lignes conservées", f"{cleaning_report['final_rows']} / {cleaning_report['original_rows']}")
@@ -296,92 +333,102 @@ with col2:
                 st.dataframe(df.head(10), use_container_width=True)
 
                 st.subheader("Statistiques descriptives")
-                st.dataframe(df.describe(), use_container_width=True)
+                st.dataframe(file_describe, use_container_width=True)
 
-        current_source = tuple(sorted((f.name, f.size) for f in uploaded_files))
+        # Le résultat affiché ne doit rester valide que pour les mêmes fichiers,
+        # le même provider ET la même question — sinon un simple changement de
+        # question sans reclic sur "Lancer l'analyse" afficherait une réponse
+        # qui ne correspond plus à ce qui est tapé à l'écran.
+        current_source = (tuple(sorted((f.name, f.size) for f in uploaded_files)), provider, query)
 
         # Si on a cliqué sur "Lancer l'analyse" (déclenchement à usage unique)
         if st.session_state.get("analyze"):
             st.session_state["analyze"] = False
-            with st.spinner("Analyse en cours..."):
-                # Préparer le contexte pour le LLM : un résumé par fichier
-                summaries = []
-                for name, df in cleaned_files:
-                    summaries.append(f"""
-                    ### Fichier : {name}
-                    - Nombre de lignes : {len(df)}
-                    - Colonnes : {', '.join(df.columns.tolist())}
-                    - Types de données : {df.dtypes.to_dict()}
-                    - Statistiques : {df.describe().to_dict()}
-                    - Premières lignes : {df.head(5).to_dict()}
-                    """)
-                data_summary = "\n".join(summaries)
+            if not cleaned_files:
+                st.error("Aucun fichier n'a pu être lu correctement, l'analyse ne peut pas être lancée.")
+            else:
+                with st.spinner("Analyse en cours..."):
+                    # Préparer le contexte pour le LLM : un résumé par fichier
+                    summaries = []
+                    for (name, df), desc in zip(cleaned_files, describe_list):
+                        summaries.append(f"""
+                        ### Fichier : {name}
+                        - Nombre de lignes : {len(df)}
+                        - Colonnes : {', '.join(df.columns.tolist())}
+                        - Types de données : {df.dtypes.to_dict()}
+                        - Statistiques : {desc.to_dict()}
+                        - Premières lignes : {df.head(5).to_dict()}
+                        """)
+                    data_summary = "\n".join(summaries)
 
-                # Choisir la liste de modèles à essayer selon le provider
-                if "Groq" in provider:
-                    candidates = ["groq/llama-3.3-70b-versatile"]
-                    api_key = os.getenv("GROQ_API_KEY")
-                else:
-                    candidates = OPENROUTER_FREE_MODELS
-                    api_key = os.getenv("OPENROUTER_API_KEY")
-
-                prompt = f"""
-                Tu es un analyste de données IA expert.
-
-                Question : {query}
-
-                Voici les données ({len(cleaned_files)} fichier(s)) :
-                {data_summary}
-
-                Fournis une analyse structurée en français avec :
-                1. Cadrage (définition de la métrique, période)
-                2. Observations clés
-                3. Facteurs explicatifs possibles
-                4. Recommandations
-                """
-
-                if not api_key:
-                    st.error(
-                        "Clé API manquante pour ce provider. "
-                        "Vérifie GROQ_API_KEY / OPENROUTER_API_KEY dans tes secrets."
-                    )
-                else:
-                    response = None
-                    last_error = None
-                    for model in candidates:
-                        try:
-                            response = completion(
-                                model=model,
-                                messages=[{"role": "user", "content": prompt}],
-                                api_key=api_key,
-                                temperature=0.3,
-                                max_tokens=2000,
-                            )
-                            break
-                        except (RateLimitError, APIError, ServiceUnavailableError) as e:
-                            last_error = e
-                            continue
-
-                    if response is not None:
-                        analysis_text = response.choices[0].message.content
-                        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-
-                        st.session_state["last_result"] = {
-                            "timestamp": timestamp,
-                            "query": query,
-                            "model_used": model,
-                            "file_names": [name for name, _ in cleaned_files],
-                            "answer": analysis_text,
-                            "source": current_source,
-                        }
-                        st.session_state["history"].append(st.session_state["last_result"])
-                        st.session_state["history"] = st.session_state["history"][-20:]
+                    # Choisir la liste de modèles à essayer selon le provider
+                    if "Groq" in provider:
+                        candidates = ["groq/llama-3.3-70b-versatile"]
+                        api_key = os.getenv("GROQ_API_KEY")
                     else:
-                        st.session_state["last_result"] = None
+                        candidates = OPENROUTER_FREE_MODELS
+                        api_key = os.getenv("OPENROUTER_API_KEY")
+
+                    prompt = f"""
+                    Tu es un analyste de données IA expert.
+
+                    Question : {query}
+
+                    Voici les données ({len(cleaned_files)} fichier(s)) :
+                    {data_summary}
+
+                    Fournis une analyse structurée en français avec :
+                    1. Cadrage (définition de la métrique, période)
+                    2. Observations clés
+                    3. Facteurs explicatifs possibles
+                    4. Recommandations
+                    """
+
+                    if not api_key:
                         st.error(
-                            f"Tous les modèles gratuits sont temporairement indisponibles "
-                            f"({provider}). Réessaie dans quelques instants. Détail : {last_error}"
+                            "Clé API manquante pour ce provider. "
+                            "Vérifie GROQ_API_KEY / OPENROUTER_API_KEY dans tes secrets."
                         )
+                    else:
+                        response = None
+                        last_error = None
+                        for model in candidates:
+                            try:
+                                response = completion(
+                                    model=model,
+                                    messages=[{"role": "user", "content": prompt}],
+                                    api_key=api_key,
+                                    temperature=0.3,
+                                    max_tokens=2000,
+                                )
+                                break
+                            except Exception as e:
+                                # Volontairement large : le but de cette boucle est de
+                                # basculer sur le modèle gratuit suivant quelle que soit
+                                # la cause de l'échec (auth, contexte trop long, réseau...).
+                                last_error = e
+                                continue
+
+                        if response is not None:
+                            analysis_text = response.choices[0].message.content
+                            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+                            st.session_state["last_result"] = {
+                                "timestamp": timestamp,
+                                "query": query,
+                                "model_used": model,
+                                "file_names": [name for name, _ in cleaned_files],
+                                "answer": analysis_text,
+                                "source": current_source,
+                            }
+                            st.session_state["history"].append(st.session_state["last_result"])
+                            st.session_state["history"] = st.session_state["history"][-20:]
+                        else:
+                            st.session_state["last_result"] = None
+                            st.error(
+                                f"Tous les modèles gratuits sont temporairement indisponibles "
+                                f"({provider}). Réessaie dans quelques instants. Détail : {last_error}"
+                            )
 
         # Affichage du dernier résultat — indépendant du déclencheur ci-dessus,
         # pour que les boutons de téléchargement (qui provoquent un rerun) ne le fassent pas disparaître
