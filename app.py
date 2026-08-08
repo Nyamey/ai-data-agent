@@ -124,11 +124,24 @@ def clean_data(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     converted_dates = []
     for col in df.select_dtypes(include=["object", "str"]).columns:
         if any(k in col.lower() for k in DATE_KEYWORDS):
-            parsed_eu = pd.to_datetime(df[col], errors="coerce", format="mixed", dayfirst=True)
-            parsed_us = pd.to_datetime(df[col], errors="coerce", format="mixed", dayfirst=False)
-            parsed = parsed_eu if parsed_eu.notna().sum() >= parsed_us.notna().sum() else parsed_us
             non_null = df[col].notna().sum()
-            if non_null > 0 and parsed.notna().sum() / non_null > 0.7:
+            if non_null == 0:
+                continue
+            # ISO (AAAA-MM-JJ) est essayé en premier et isolément : avec
+            # format="mixed", dayfirst=True inverse à tort jour/mois même sur
+            # des dates ISO non ambiguës dès que le jour est <= 12 (bug pandas
+            # observé). ISO8601 lève cette ambiguïté puisque l'année est
+            # toujours le premier composant.
+            parsed = pd.to_datetime(df[col], errors="coerce", format="ISO8601")
+            remaining = parsed.isna() & df[col].notna()
+            if remaining.any():
+                # Le reste (formats JJ/MM/AAAA ou MM/JJ/AAAA) reste ambigu :
+                # on garde l'heuristique par comparaison des deux lectures.
+                parsed_eu = pd.to_datetime(df[col][remaining], errors="coerce", format="mixed", dayfirst=True)
+                parsed_us = pd.to_datetime(df[col][remaining], errors="coerce", format="mixed", dayfirst=False)
+                fallback = parsed_eu if parsed_eu.notna().sum() >= parsed_us.notna().sum() else parsed_us
+                parsed.loc[remaining] = fallback
+            if parsed.notna().sum() / non_null > 0.7:
                 df[col] = parsed
                 converted_dates.append(col)
 
