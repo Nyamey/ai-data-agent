@@ -43,7 +43,7 @@ class AnomalyDetector:
         
         # Calculer le z-score
         z_score = (value - mean) / std
-        is_anomaly = abs(z_score) > self.threshold
+        is_anomaly = bool(abs(z_score) > self.threshold)
         
         return {
             "anomaly": is_anomaly,
