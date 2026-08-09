@@ -17,14 +17,22 @@ def framing_node(state: AgentState) -> dict:
     C'est l'étape qui évite que l'analyse parte dans la mauvaise direction.
     """
     state.status = AnalysisStatus.FRAMING
-    
+
+    if state.join_spec:
+        files_desc = (
+            f"{len(state.data_paths)} fichiers croisés par jointure : "
+            f"{', '.join(state.data_paths)} (racine : {state.join_spec['root']})"
+        )
+    else:
+        files_desc = state.data_path
+
     prompt = f"""
-    Tu es un analyste de données IA expert. Analyse la demande suivante 
+    Tu es un analyste de données IA expert. Analyse la demande suivante
     et produit un cadrage structuré.
-    
+
     Demande de l'utilisateur : {state.query}
-    Fichier de données : {state.data_path}
-    
+    Fichier(s) de données : {files_desc}
+
     Produis UNIQUEMENT un JSON valide avec ces champs :
     {{
         "metric_definition": "définition opérationnelle de la métrique",

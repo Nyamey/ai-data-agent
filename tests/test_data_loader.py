@@ -1,8 +1,16 @@
 # tests/test_data_loader.py — Chargement DuckDB et détection de schéma
 import duckdb
 import pandas as pd
+import pytest
 
-from agent.tools.data_loader import detect_id_column, execute_query, fetch_dataframe, load_data, quote_ident
+from agent.tools.data_loader import (
+    detect_id_column,
+    execute_query,
+    fetch_dataframe,
+    load_data,
+    load_joined_data,
+    quote_ident,
+)
 
 
 def test_detect_id_column_matches_common_patterns():
@@ -145,3 +153,173 @@ def test_build_and_validate_nodes_survive_malicious_column_name(tmp_path):
     validate_result = validate_node(state)
     total_check = str(validate_result["validation_checks"]["total_entites"])
     assert "FUITE_DE_DONNEES" not in total_check
+
+
+# --- load_joined_data() : analyse croisée entre plusieurs fichiers ---
+
+def _three_way_join_spec(paths):
+    return {
+        "root": paths["commandes"],
+        "joins": [
+            {"file": paths["clients"], "on_file": paths["commandes"],
+             "file_column": "id", "on_column": "client_id_ref", "how": "inner"},
+            {"file": paths["produits"], "on_file": paths["commandes"],
+             "file_column": "id", "on_column": "produit_id_ref", "how": "inner"},
+        ],
+    }
+
+
+def test_load_joined_data_joins_three_files(sample_joinable_csvs, tmp_path):
+    paths = sample_joinable_csvs
+    db_path = str(tmp_path / "analytics.duckdb")
+    meta = load_joined_data(
+        [paths["commandes"], paths["clients"], paths["produits"]],
+        _three_way_join_spec(paths),
+        db_path=db_path,
+    )
+
+    assert meta["row_count"] == 40  # chaque commande a un client et un produit valides
+    assert meta["source_files"] == [paths["commandes"], paths["clients"], paths["produits"]]
+    columns = {s["column_name"] for s in meta["schema"]}
+    # Toutes les colonnes sont préfixées par leur fichier d'origine
+    assert "commandes__montant" in columns
+    assert "clients__segment" in columns
+    assert "produits__categorie" in columns
+
+
+def test_load_joined_data_prefixes_avoid_column_collisions(sample_joinable_csvs, tmp_path):
+    # commandes, clients et produits ont chacun leur propre colonne "id" --
+    # sans préfixage ce serait une collision silencieuse.
+    paths = sample_joinable_csvs
+    db_path = str(tmp_path / "analytics.duckdb")
+    meta = load_joined_data(
+        [paths["commandes"], paths["clients"], paths["produits"]],
+        _three_way_join_spec(paths),
+        db_path=db_path,
+    )
+    columns = [s["column_name"] for s in meta["schema"]]
+    assert columns.count("commandes__id") == 1
+    assert columns.count("clients__id") == 1
+    assert columns.count("produits__id") == 1
+
+
+def test_load_joined_data_detects_id_and_date_on_joined_table(sample_joinable_csvs, tmp_path):
+    paths = sample_joinable_csvs
+    db_path = str(tmp_path / "analytics.duckdb")
+    meta = load_joined_data(
+        [paths["commandes"], paths["clients"], paths["produits"]],
+        _three_way_join_spec(paths),
+        db_path=db_path,
+    )
+    assert meta["id_column"] == "commandes__id"
+    assert "commandes__date_commande" in meta["date_range"]
+
+
+def test_load_joined_data_rejects_join_step_referencing_unincluded_file(sample_joinable_csvs, tmp_path):
+    paths = sample_joinable_csvs
+    bad_spec = {
+        "root": paths["commandes"],
+        "joins": [
+            # "produits" avant "clients" alors que rien ne le référence encore
+            {"file": paths["clients"], "on_file": paths["produits"],
+             "file_column": "id", "on_column": "id", "how": "inner"},
+        ],
+    }
+    with pytest.raises(ValueError):
+        load_joined_data(
+            [paths["commandes"], paths["clients"], paths["produits"]],
+            bad_spec,
+            db_path=str(tmp_path / "analytics.duckdb"),
+        )
+
+
+def test_load_joined_data_rejects_unsupported_join_type(sample_joinable_csvs, tmp_path):
+    paths = sample_joinable_csvs
+    bad_spec = {
+        "root": paths["commandes"],
+        "joins": [
+            {"file": paths["clients"], "on_file": paths["commandes"],
+             "file_column": "id", "on_column": "client_id_ref", "how": "full outer; DROP TABLE x"},
+        ],
+    }
+    with pytest.raises(ValueError):
+        load_joined_data(
+            [paths["commandes"], paths["clients"]],
+            bad_spec,
+            db_path=str(tmp_path / "analytics.duckdb"),
+        )
+
+
+def test_load_joined_data_left_join_keeps_unmatched_rows(tmp_path):
+    a = pd.DataFrame({"id": [1, 2, 3]})
+    b = pd.DataFrame({"a_id": [1, 2], "label": ["x", "y"]})  # pas de correspondance pour id=3
+    a_path, b_path = tmp_path / "a.csv", tmp_path / "b.csv"
+    a.to_csv(a_path, index=False)
+    b.to_csv(b_path, index=False)
+
+    spec = {
+        "root": str(a_path),
+        "joins": [{"file": str(b_path), "on_file": str(a_path),
+                   "file_column": "a_id", "on_column": "id", "how": "left"}],
+    }
+    meta_left = load_joined_data([str(a_path), str(b_path)], spec, db_path=str(tmp_path / "left.duckdb"))
+    assert meta_left["row_count"] == 3  # id=3 conservé malgré l'absence de correspondance
+
+    spec_inner = {**spec, "joins": [{**spec["joins"][0], "how": "inner"}]}
+    meta_inner = load_joined_data([str(a_path), str(b_path)], spec_inner, db_path=str(tmp_path / "inner.duckdb"))
+    assert meta_inner["row_count"] == 2  # id=3 exclu
+
+
+def test_load_joined_data_neutralizes_malicious_column_name(tmp_path):
+    # Même attaque que test_load_data_does_not_leak_data_via_malicious_column_name,
+    # mais au travers du chemin de jointure (SELECT avec alias préfixé).
+    evil_col = "1) as x FROM commandes UNION SELECT flag as x FROM secrets -- x_id"
+    commandes = pd.DataFrame({"id": [1, 2], "client_id_ref": [1, 2]})
+    clients = pd.DataFrame({"id": [1, 2], evil_col: [9, 9]})
+    commandes_path, clients_path = tmp_path / "commandes.csv", tmp_path / "clients.csv"
+    commandes.to_csv(commandes_path, index=False)
+    clients.to_csv(clients_path, index=False)
+
+    db_path = str(tmp_path / "analytics.duckdb")
+    con = duckdb.connect(db_path)
+    con.execute("CREATE TABLE secrets AS SELECT 'FUITE_DE_DONNEES' as flag")
+    con.close()
+
+    spec = {
+        "root": str(commandes_path),
+        "joins": [{"file": str(clients_path), "on_file": str(commandes_path),
+                   "file_column": "id", "on_column": "client_id_ref", "how": "inner"}],
+    }
+    meta = load_joined_data([str(commandes_path), str(clients_path)], spec, db_path=db_path)
+    assert meta["row_count"] == 2
+    assert "FUITE_DE_DONNEES" not in str(meta["schema"])
+
+
+def test_load_joined_data_supports_five_files(tmp_path):
+    # MAX_FILES (app.py) autorise jusqu'à 5 fichiers en mode simple -- le
+    # mode jointure doit supporter le même plafond, pas seulement 2 ou 3.
+    root = pd.DataFrame({"id": range(1, 11)})
+    paths = {"root": tmp_path / "f0.csv"}
+    root.to_csv(paths["root"], index=False)
+
+    join_steps = []
+    for i in range(1, 5):
+        df = pd.DataFrame({"ref": range(1, 11), f"valeur_{i}": range(10)})
+        path = tmp_path / f"f{i}.csv"
+        df.to_csv(path, index=False)
+        paths[f"f{i}"] = path
+        # Chacun se rattache à la racine (arbre en étoile) -- un cas limite
+        # différent de la chaîne linéaire testée par ailleurs.
+        join_steps.append({
+            "file": str(path), "on_file": str(paths["root"]),
+            "file_column": "ref", "on_column": "id", "how": "inner",
+        })
+
+    spec = {"root": str(paths["root"]), "joins": join_steps}
+    all_paths = [str(paths["root"])] + [str(paths[f"f{i}"]) for i in range(1, 5)]
+    meta = load_joined_data(all_paths, spec, db_path=str(tmp_path / "analytics.duckdb"))
+
+    assert meta["row_count"] == 10
+    columns = {s["column_name"] for s in meta["schema"]}
+    for i in range(1, 5):
+        assert f"f{i}__valeur_{i}" in columns

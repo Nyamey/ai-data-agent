@@ -51,35 +51,39 @@ def detect_id_column(schema: list[dict], date_columns: list[str]) -> str | None:
     return None
 
 
-def load_data(csv_path: str, db_path: str = None) -> dict:
+def _table_name_from_path(csv_path: str) -> str:
+    """Dérive un nom de table sûr à partir d'un chemin de fichier.
+
+    Tout caractère qui n'est pas alphanumérique/underscore est neutralisé --
+    voir UNSAFE_TABLE_CHARS.
     """
-    Charge un fichier CSV dans DuckDB et retourne les métadonnées.
-    
-    Args:
-        csv_path: Chemin vers le fichier CSV
-        db_path: Chemin vers la base DuckDB (optionnel)
-    
-    Returns:
-        Dictionnaire avec le schéma, nombre de lignes, valeurs manquantes, etc.
+    return UNSAFE_TABLE_CHARS.sub("_", Path(csv_path).stem)
+
+
+def _load_csv_into_table(con, csv_path: str) -> str:
+    """Charge un CSV dans sa propre table DuckDB et retourne son nom.
+
+    Factorisé hors de load_data()/load_joined_data() : les deux ont besoin
+    de charger un ou plusieurs CSV de la même façon avant de calculer des
+    métadonnées différentes (une seule table vs une jointure).
     """
-    db_path = db_path or os.getenv("DUCKDB_PATH", "./data/analytics.duckdb")
-
-    # S'assurer que le dossier existe
-    Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-
-    # Connexion à DuckDB
-    con = duckdb.connect(db_path)
-
-    # Nom de table à partir du nom de fichier (tout caractère qui n'est pas
-    # alphanumérique/underscore est neutralisé -- voir UNSAFE_TABLE_CHARS)
-    table_name = UNSAFE_TABLE_CHARS.sub("_", Path(csv_path).stem)
-    table_ref = quote_ident(table_name)
-
-    # Charger le CSV dans DuckDB (lecture automatique des types)
+    table_name = _table_name_from_path(csv_path)
     con.execute(f"""
-        CREATE OR REPLACE TABLE {table_ref} AS
+        CREATE OR REPLACE TABLE {quote_ident(table_name)} AS
         SELECT * FROM read_csv_auto('{csv_path}', header=true)
     """)
+    return table_name
+
+
+def _extract_table_metadata(con, table_name: str) -> dict:
+    """Calcule les métadonnées d'inspection d'une table déjà chargée.
+
+    Commun à load_data() (une table = un CSV) et load_joined_data() (une
+    table = plusieurs CSV joints) : une fois la table en place, l'inspection
+    (schéma, plage de dates, valeurs manquantes, doublons, colonne
+    identifiant) ne dépend pas de son origine.
+    """
+    table_ref = quote_ident(table_name)
 
     # Récupérer le schéma (noms et types de colonnes)
     schema = con.execute(f"DESCRIBE {table_ref}").fetchdf().to_dict(orient="records")
@@ -124,22 +128,128 @@ def load_data(csv_path: str, db_path: str = None) -> dict:
         )
     """).fetchone()[0]
 
-    con.close()
-
     id_column = detect_id_column(schema, date_columns)
 
     return {
-        "table_name": table_name,
         "schema": schema,
         "row_count": row_count,
         "date_range": date_range,
         "null_counts": null_counts,
         "duplicate_count": duplicate_count,
         "id_column": id_column,
+    }
+
+
+def load_data(csv_path: str, db_path: str = None) -> dict:
+    """
+    Charge un fichier CSV dans DuckDB et retourne les métadonnées.
+
+    Args:
+        csv_path: Chemin vers le fichier CSV
+        db_path: Chemin vers la base DuckDB (optionnel)
+
+    Returns:
+        Dictionnaire avec le schéma, nombre de lignes, valeurs manquantes, etc.
+    """
+    db_path = db_path or os.getenv("DUCKDB_PATH", "./data/analytics.duckdb")
+    Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+    con = duckdb.connect(db_path)
+
+    table_name = _load_csv_into_table(con, csv_path)
+    metadata = _extract_table_metadata(con, table_name)
+    con.close()
+
+    return {
+        "table_name": table_name,
         # Chemin DuckDB effectivement utilisé (résolu depuis l'argument ou
         # DUCKDB_PATH) -- propagé aux nœuds suivants pour qu'ils interrogent
         # la même base, y compris quand un chemin par session est utilisé.
         "db_path": db_path,
+        **metadata,
+    }
+
+
+def load_joined_data(csv_paths: list[str], join_spec: dict, db_path: str = None) -> dict:
+    """
+    Charge plusieurs CSV dans DuckDB et les joint en une seule table, pour
+    une analyse croisée (ex. commandes + clients + produits).
+
+    join_spec décrit un arbre de jointure construit incrémentalement par
+    l'utilisateur (pas de détection automatique de clé, trop fragile) :
+        {
+            "root": "commandes.csv",
+            "joins": [
+                {"file": "clients.csv", "on_file": "commandes.csv",
+                 "file_column": "id", "on_column": "client_id", "how": "inner"},
+                {"file": "produits.csv", "on_file": "commandes.csv",
+                 "file_column": "id", "on_column": "produit_id", "how": "inner"},
+            ],
+        }
+    Chaque étape doit se rattacher à un fichier déjà inclus (root ou une
+    étape précédente) -- ça garantit un arbre connexe plutôt qu'un graphe de
+    jointures ambigu, tout en couvrant un nombre quelconque de fichiers.
+
+    Toutes les colonnes de sortie sont préfixées "{table}__{colonne}" pour
+    éviter toute collision entre fichiers (ex. deux fichiers avec une
+    colonne "date" ou "id") -- la détection de colonne identifiant/date en
+    aval fonctionne aussi bien sur ces noms préfixés.
+
+    Returns:
+        Même forme que load_data(), plus "source_files" (chemins d'origine).
+    """
+    db_path = db_path or os.getenv("DUCKDB_PATH", "./data/analytics.duckdb")
+    Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+    con = duckdb.connect(db_path)
+
+    table_by_path = {path: _load_csv_into_table(con, path) for path in csv_paths}
+
+    root_path = join_spec["root"]
+    if root_path not in table_by_path:
+        raise ValueError(f"Fichier racine '{root_path}' absent de csv_paths.")
+
+    from_clause = quote_ident(table_by_path[root_path])
+    included = {root_path}
+    for step in join_spec.get("joins", []):
+        file_path, on_path = step["file"], step["on_file"]
+        if on_path not in included:
+            raise ValueError(
+                f"'{on_path}' doit être ajouté avant '{file_path}' dans join_spec['joins']."
+            )
+        how = step.get("how", "inner").upper()
+        if how not in ("INNER", "LEFT"):
+            raise ValueError(f"Type de jointure non supporté : {how}")
+        from_clause += (
+            f"\n{how} JOIN {quote_ident(table_by_path[file_path])}"
+            f" ON {quote_ident(table_by_path[on_path])}.{quote_ident(step['on_column'])}"
+            f" = {quote_ident(table_by_path[file_path])}.{quote_ident(step['file_column'])}"
+        )
+        included.add(file_path)
+
+    # Sélectionner et préfixer les colonnes de chaque table pour construire
+    # la table jointe finale.
+    select_parts = []
+    for path in csv_paths:
+        table = table_by_path[path]
+        columns = con.execute(f"DESCRIBE {quote_ident(table)}").fetchdf()["column_name"].tolist()
+        for col in columns:
+            alias = f"{table}__{col}"
+            select_parts.append(f"{quote_ident(table)}.{quote_ident(col)} AS {quote_ident(alias)}")
+
+    joined_table = _table_name_from_path("joined_" + "_".join(table_by_path.values()))[:63]
+    con.execute(f"""
+        CREATE OR REPLACE TABLE {quote_ident(joined_table)} AS
+        SELECT {', '.join(select_parts)}
+        FROM {from_clause}
+    """)
+
+    metadata = _extract_table_metadata(con, joined_table)
+    con.close()
+
+    return {
+        "table_name": joined_table,
+        "db_path": db_path,
+        "source_files": csv_paths,
+        **metadata,
     }
 
 

@@ -128,7 +128,11 @@ streamlit run app.py
 La barre latérale propose deux modes :
 
 - **Analyse simple** (par défaut) : chargez jusqu'à 5 fichiers CSV, laissez l'application les nettoyer et les analyser (analyse LLM en une passe), puis exportez le résultat en Markdown, CSV, Excel ou PowerPoint.
-- **Agent complet (8 étapes)** : lance le même workflow LangGraph que la ligne de commande. Chaque fichier téléversé obtient son propre onglet et son propre cycle complet (cadrage/inspection/approbation/résultats), totalement indépendant des autres — pas d'analyse jointe entre fichiers, mais aucune limite au nombre de fichiers non plus. Cliquez sur « Lancer le cadrage et l'inspection », consultez le résumé affiché, puis approuvez ou rejetez la poursuite de l'analyse — le graphe reprend exactement où il s'est arrêté, sans `input()` ni rechargement de page. Une fois l'analyse terminée, les livrables Excel et PowerPoint générés par l'agent sont téléchargeables directement depuis l'onglet.
+- **Agent complet (8 étapes)** : lance le même workflow LangGraph que la ligne de commande, sur jusqu'à 5 fichiers. Deux façons de les analyser :
+  - **Indépendamment** (par défaut) : chaque fichier obtient son propre onglet et son propre cycle complet (cadrage/inspection/approbation/résultats), totalement indépendant des autres.
+  - **Croisés par jointure** : les fichiers sont chargés dans une seule table DuckDB jointe et analysés en un seul cycle. Pas de détection automatique de clé (trop fragile) : vous choisissez un fichier racine, puis pour chaque autre fichier, à quel fichier déjà ajouté il se rattache et sur quelles colonnes — ça construit un arbre de jointure sans limite de fichiers. Chaque étape peut être une jointure `inner` (ne garde que les lignes avec correspondance de chaque côté — recommandé pour croiser plusieurs fichiers sans faire exploser le résultat en `NULL`) ou `left` (garde aussi les lignes du fichier déjà ajouté sans correspondance).
+
+  Dans les deux cas : cliquez sur « Lancer le cadrage et l'inspection », consultez le résumé affiché, puis approuvez ou rejetez la poursuite de l'analyse — le graphe reprend exactement où il s'est arrêté, sans `input()` ni rechargement de page. Une fois l'analyse terminée, les livrables Excel et PowerPoint générés par l'agent sont téléchargeables directement depuis l'onglet.
 
 ### Agent en ligne de commande
 
@@ -211,7 +215,7 @@ pip install -r requirements.txt
 python -m pytest tests/ -v
 ```
 
-La suite couvre le nettoyage/export de données (`app_utils.py`), le chargement DuckDB et la détection de schéma, l'extraction de JSON depuis une réponse LLM imparfaite, les nœuds de l'agent qui ne nécessitent pas de LLM (`build`, `test`, `validate`, `approval` — y compris le test de significativité chi²), la décision de déclenchement du pipeline de streaming (avec un faux graphe, sans appel réseau), le générateur Excel et la vérification de cohérence Excel/PowerPoint. Les nœuds qui appellent un LLM (`framing`, `recommend`) ne sont volontairement pas couverts par des tests automatisés — les vérifier nécessiterait soit un vrai appel LLM (coûteux, non déterministe), soit un mock qui ne testerait que le mock. Une intégration continue (GitHub Actions, [`.github/workflows/tests.yml`](.github/workflows/tests.yml)) exécute cette suite sur Python 3.11 et 3.12 à chaque push/PR sur `main`, sans clé API requise.
+La suite couvre le nettoyage/export de données (`app_utils.py`), le chargement DuckDB et la détection de schéma (fichier seul et jointure multi-fichiers), l'extraction de JSON depuis une réponse LLM imparfaite, les nœuds de l'agent qui ne nécessitent pas de LLM (`build`, `test`, `validate`, `approval`, `inspection` — y compris le test de significativité chi²), la décision de déclenchement du pipeline de streaming (avec un faux graphe, sans appel réseau), le générateur Excel et la vérification de cohérence Excel/PowerPoint. Les nœuds qui appellent un LLM (`framing`, `recommend`) ne sont volontairement pas couverts par des tests automatisés — les vérifier nécessiterait soit un vrai appel LLM (coûteux, non déterministe), soit un mock qui ne testerait que le mock. Une intégration continue (GitHub Actions, [`.github/workflows/tests.yml`](.github/workflows/tests.yml)) exécute cette suite sur Python 3.11 et 3.12 à chaque push/PR sur `main`, sans clé API requise.
 
 ---
 
@@ -229,8 +233,9 @@ Toutes les étapes prévues sont complétées :
 - [x] Étendre le mode agent de Streamlit au multi-fichiers (un onglet indépendant par fichier)
 - [x] Jeu de données d'exemple et démo reproductible (`data/sample_data.csv`)
 - [x] Suite de tests automatisés et intégration continue
+- [x] Analyse croisée entre plusieurs fichiers liés (jointure configurable par l'utilisateur, jusqu'à 5 fichiers)
 
-Idées non planifiées pour la suite : couverture de tests des nœuds `framing`/`recommend` via un provider LLM local/déterministe, analyse jointe entre plusieurs fichiers liés (au-delà des cycles indépendants actuels), export des livrables du pipeline de streaming.
+Idées non planifiées pour la suite : couverture de tests des nœuds `framing`/`recommend` via un provider LLM local/déterministe, export des livrables du pipeline de streaming.
 
 ---
 

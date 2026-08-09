@@ -46,3 +46,41 @@ def sample_no_id_csv(tmp_path):
     path = tmp_path / "produits.csv"
     df.to_csv(path, index=False)
     return str(path)
+
+
+@pytest.fixture
+def sample_joinable_csvs(tmp_path):
+    """Trois fichiers liés (commandes/clients/produits) pour tester load_joined_data().
+
+    commandes est la racine ; clients et produits s'y rattachent chacun --
+    un arbre de jointure à 3 fichiers, pas juste 2.
+    """
+    commandes = pd.DataFrame({
+        "id": range(1, 41),
+        "client_id_ref": [(i % 10) + 1 for i in range(40)],
+        "produit_id_ref": [(i % 5) + 1 for i in range(40)],
+        "date_commande": ["2024-01-0" + str((i % 9) + 1) for i in range(40)],
+        "montant": range(40),
+    })
+    clients = pd.DataFrame({
+        "id": range(1, 11),
+        "nom": [f"Client{i}" for i in range(1, 11)],
+        "segment": (["premium", "standard"] * 5),
+    })
+    produits = pd.DataFrame({
+        "id": range(1, 6),
+        "categorie": (["A", "B"] * 3)[:5],
+    })
+
+    commandes_path = tmp_path / "commandes.csv"
+    clients_path = tmp_path / "clients.csv"
+    produits_path = tmp_path / "produits.csv"
+    commandes.to_csv(commandes_path, index=False)
+    clients.to_csv(clients_path, index=False)
+    produits.to_csv(produits_path, index=False)
+
+    return {
+        "commandes": str(commandes_path),
+        "clients": str(clients_path),
+        "produits": str(produits_path),
+    }

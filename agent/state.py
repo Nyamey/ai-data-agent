@@ -29,7 +29,20 @@ class AgentState(BaseModel):
     
     # --- Entrées ---
     query: str = Field(description="La question commerciale à résoudre")
-    data_path: str = Field(description="Chemin vers le fichier de données")
+    data_path: str = Field(
+        description="Chemin vers le fichier de données (fichier racine en mode jointure)"
+    )
+    data_paths: Optional[list[str]] = Field(
+        default=None,
+        description="Chemins de tous les fichiers à joindre (mode jointure uniquement) -- "
+        "voir join_spec et agent.tools.data_loader.load_joined_data",
+    )
+    join_spec: Optional[dict] = Field(
+        default=None,
+        description="Arbre de jointure {'root': chemin, 'joins': [...]} -- présent uniquement "
+        "en mode jointure ; l'inspection charge alors data_paths via load_joined_data() "
+        "au lieu de data_path via load_data()",
+    )
     output_language: str = Field(default="fr", description="Langue des livrables")
     db_path: Optional[str] = Field(
         default=None,

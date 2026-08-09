@@ -59,14 +59,20 @@ def render_date_range(date_range_by_column: dict):
 
 def render_agent_mode(cleaned_files: list, query: str, provider: str, current_source: tuple):
     """
-    Pilote le workflow agent en 8 étapes (agent/graph.py) depuis l'UI, un
-    onglet par fichier téléversé.
+    Pilote le workflow agent en 8 étapes (agent/graph.py) depuis l'UI.
 
-    Le graphe LangGraph attend un `data_path` unique : il n'y a pas
-    d'analyse jointe entre fichiers, chacun a son propre cycle cadrage /
-    inspection / approbation / résultats, complètement indépendant des
-    autres (fil de checkpoint, base DuckDB et décision d'approbation
-    propres à chaque fichier).
+    Deux modes quand plusieurs fichiers sont téléversés :
+    - Indépendant (par défaut) : un onglet par fichier, chacun son propre
+      cycle cadrage / inspection / approbation / résultats, complètement
+      indépendant des autres (fil de checkpoint, base DuckDB et décision
+      d'approbation propres à chaque fichier). Le graphe LangGraph n'a pas
+      de notion native de "plusieurs fichiers", donc il n'y a pas d'analyse
+      croisée dans ce mode.
+    - Jointure : les fichiers sont chargés dans une seule table DuckDB
+      croisée (voir agent.tools.data_loader.load_joined_data) selon un
+      arbre de jointure configuré par l'utilisateur, puis analysés comme un
+      cycle unique -- build/test/validate ne voient qu'une table, peu
+      importe son origine.
 
     Le graphe est compilé avec `interrupt_before=["approval"]` : il s'arrête
     réellement avant l'étape d'approbation (pas de input() bloquant). Cette
@@ -83,13 +89,32 @@ def render_agent_mode(cleaned_files: list, query: str, provider: str, current_so
     llm_provider = "groq" if "Groq" in provider else "openrouter"
     runs = st.session_state.setdefault("agent_runs", {})
 
+    join_spec_by_name = None
+    if len(cleaned_files) >= 2:
+        mode_choice = st.radio(
+            "Comment analyser ces fichiers ?",
+            ["Indépendamment (un cycle par fichier)", "Croisés par jointure (un seul cycle)"],
+            key="agent_join_mode_choice",
+        )
+        if mode_choice.startswith("Croisés"):
+            join_spec_by_name = _render_join_config_ui(cleaned_files)
+
     if st.session_state.get("agent_trigger_inspect"):
         st.session_state["agent_trigger_inspect"] = False
-        for i, (name, df) in enumerate(cleaned_files):
-            run_key = f"{i}_{name}"
-            _start_agent_inspection(
-                run_key, name, df, query, llm_provider, session_dir, current_source, runs
+        if join_spec_by_name is not None:
+            _start_joint_agent_inspection(
+                join_spec_by_name, cleaned_files, query, llm_provider, session_dir, current_source, runs
             )
+        else:
+            for i, (name, df) in enumerate(cleaned_files):
+                run_key = f"{i}_{name}"
+                _start_agent_inspection(
+                    run_key, name, df, query, llm_provider, session_dir, current_source, runs
+                )
+
+    if join_spec_by_name is not None:
+        _render_single_agent_run("join_0", current_source, runs)
+        return
 
     if len(cleaned_files) == 1:
         name, _ = cleaned_files[0]
@@ -102,14 +127,131 @@ def render_agent_mode(cleaned_files: list, query: str, provider: str, current_so
             _render_single_agent_run(f"{i}_{name}", current_source, runs)
 
 
+def _render_join_config_ui(cleaned_files: list) -> dict:
+    """
+    Affiche les sélecteurs de configuration de la jointure et renvoie le
+    join_spec construit (indexé par nom de fichier -- traduit en chemins
+    réels par _start_joint_agent_inspection juste avant de lancer l'agent).
+
+    Pas de détection automatique de clé de jointure (trop fragile) :
+    l'utilisateur choisit un fichier racine, puis pour chaque autre fichier
+    (dans l'ordre de téléversement), à quel fichier déjà inclus il se
+    rattache et sur quelles colonnes -- ça construit un arbre de jointure
+    connexe, sans limite sur le nombre de fichiers.
+    """
+    file_names = [name for name, _ in cleaned_files]
+    columns_by_name = {name: list(df.columns) for name, df in cleaned_files}
+
+    st.markdown("##### Configuration de la jointure")
+    root = st.selectbox("Fichier racine", file_names, key="join_root")
+
+    included = [root]
+    joins = []
+    for name in [n for n in file_names if n != root]:
+        st.caption(f"Rattacher **{name}** :")
+        c1, c2, c3, c4 = st.columns(4)
+
+        # Les options de ces sélecteurs dépendent du fichier racine choisi
+        # et changent d'un rerun à l'autre : si la valeur mémorisée n'est
+        # plus valide, la remettre à une valeur par défaut avant de rendre
+        # le widget évite une StreamlitAPIException (valeur hors options).
+        on_file_key = f"join_on_file_{name}"
+        if st.session_state.get(on_file_key) not in included:
+            st.session_state[on_file_key] = included[0]
+        on_file = c1.selectbox("à", included, key=on_file_key)
+
+        on_col_key = f"join_on_col_{name}_{on_file}"
+        on_columns = columns_by_name[on_file]
+        if st.session_state.get(on_col_key) not in on_columns:
+            st.session_state[on_col_key] = on_columns[0]
+        on_col = c3.selectbox(f"colonne de {on_file}", on_columns, key=on_col_key)
+
+        file_col = c2.selectbox(f"colonne de {name}", columns_by_name[name], key=f"join_file_col_{name}")
+        how = c4.selectbox("type", ["inner", "left"], key=f"join_how_{name}")
+
+        joins.append({
+            "file": name, "on_file": on_file,
+            "file_column": file_col, "on_column": on_col, "how": how,
+        })
+        included.append(name)
+
+    return {"root": root, "joins": joins}
+
+
+def _write_session_csv(df: pd.DataFrame, name: str, session_dir: str) -> str:
+    """Écrit un DataFrame nettoyé dans le dossier de session, nom de fichier assaini.
+
+    `name` porte déjà l'extension d'origine (ex. "commandes.csv") : on la
+    retire avant de rajouter la nôtre, sinon le fichier écrit se retrouve en
+    ".csv.csv" -- ce qui, en mode jointure, pollue aussi le préfixe de
+    colonne dérivé du nom de table (ex. "data_commandes_csv__id" au lieu de
+    "data_commandes__id").
+    """
+    stem = re.sub(r"[^\w.-]", "_", os.path.splitext(name)[0])
+    csv_path = os.path.join(session_dir, f"data_{stem}.csv")
+    df.to_csv(csv_path, index=False)
+    return csv_path
+
+
+def _start_joint_agent_inspection(
+    join_spec_by_name: dict, cleaned_files: list, query: str, llm_provider: str,
+    session_dir: str, current_source: tuple, runs: dict,
+):
+    """Lance le cadrage + l'inspection pour une analyse croisée (jointure de plusieurs fichiers)."""
+    run_key = "join_0"
+    name_to_path = {name: _write_session_csv(df, name, session_dir) for name, df in cleaned_files}
+
+    involved_names = [join_spec_by_name["root"]] + [s["file"] for s in join_spec_by_name["joins"]]
+    csv_paths = [name_to_path[n] for n in involved_names]
+    join_spec = {
+        "root": name_to_path[join_spec_by_name["root"]],
+        "joins": [
+            {
+                "file": name_to_path[s["file"]],
+                "on_file": name_to_path[s["on_file"]],
+                "file_column": s["file_column"],
+                "on_column": s["on_column"],
+                "how": s["how"],
+            }
+            for s in join_spec_by_name["joins"]
+        ],
+    }
+
+    thread_id = str(uuid.uuid4())
+    checkpoint_path = os.path.join(session_dir, f"checkpoint_{thread_id}.db")
+    db_path = os.path.join(session_dir, f"analytics_{thread_id}.duckdb")
+
+    try:
+        with st.spinner("Cadrage et inspection en cours (fichiers croisés)..."):
+            graph = build_agent_graph(checkpoint_path=checkpoint_path)
+            initial_state = AgentState(
+                query=query, data_path=csv_paths[0], data_paths=csv_paths, join_spec=join_spec,
+                db_path=db_path, llm_provider=llm_provider,
+            )
+            config = {"configurable": {"thread_id": thread_id}}
+            for _ in graph.stream(initial_state, config=config, stream_mode="values"):
+                pass
+            snapshot = graph.get_state(config)
+    except Exception as e:
+        runs[run_key] = {"source": current_source, "error": str(e)}
+        return
+
+    runs[run_key] = {
+        "source": current_source,
+        "thread_id": thread_id,
+        "checkpoint_path": checkpoint_path,
+        "awaiting_approval": snapshot.next == ("approval",),
+        "snapshot_values": snapshot.values,
+        "final_event": None,
+    }
+
+
 def _start_agent_inspection(
     run_key: str, name: str, df: pd.DataFrame, query: str, llm_provider: str,
     session_dir: str, current_source: tuple, runs: dict,
 ):
     """Lance le cadrage + l'inspection pour un fichier, jusqu'au point d'interruption."""
-    safe_key = re.sub(r"[^\w.-]", "_", run_key)
-    csv_path = os.path.join(session_dir, f"data_{safe_key}.csv")
-    df.to_csv(csv_path, index=False)
+    csv_path = _write_session_csv(df, run_key, session_dir)
 
     thread_id = str(uuid.uuid4())
     checkpoint_path = os.path.join(session_dir, f"checkpoint_{thread_id}.db")
