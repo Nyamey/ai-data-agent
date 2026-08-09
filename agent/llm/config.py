@@ -1,9 +1,42 @@
 # agent/llm/config.py — Configuration LLM avec fallback automatique
+import json
 import os
+import re
 from litellm import completion
 from dotenv import load_dotenv
 
 load_dotenv()
+
+
+def extract_json(text: str) -> dict:
+    """
+    Extrait un objet JSON de la réponse d'un LLM.
+
+    Malgré la consigne "réponds UNIQUEMENT en JSON", beaucoup de modèles
+    (surtout les plus petits/gratuits) ajoutent une phrase d'introduction ou
+    enrobent la réponse dans un bloc ```json ... ``` -- un simple json.loads()
+    échoue alors sur du JSON pourtant valide une fois isolé. Essaie plusieurs
+    stratégies avant d'abandonner.
+    """
+    text = text.strip()
+
+    fence_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
+    if fence_match:
+        try:
+            return json.loads(fence_match.group(1))
+        except json.JSONDecodeError:
+            pass
+
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+
+    start, end = text.find("{"), text.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        return json.loads(text[start:end + 1])
+
+    raise json.JSONDecodeError("Impossible d'extraire un JSON valide", text, 0)
 
 # Mapping provider → modèle par défaut
 DEFAULT_MODELS = {

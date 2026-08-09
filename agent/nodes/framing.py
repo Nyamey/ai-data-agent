@@ -1,7 +1,7 @@
 # agent/nodes/framing.py — Nœud 1 : Cadrage de l'analyse
 import json
 from agent.state import AgentState, AnalysisStatus
-from agent.llm.config import get_llm_response
+from agent.llm.config import get_llm_response, extract_json
 
 
 def framing_node(state: AgentState) -> dict:
@@ -43,7 +43,7 @@ def framing_node(state: AgentState) -> dict:
     )
     
     try:
-        framing = json.loads(response)
+        framing = extract_json(response)
         return {
             "status": AnalysisStatus.INSPECTION,
             "metric_definition": framing.get("metric_definition", ""),

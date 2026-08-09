@@ -1,7 +1,7 @@
 # agent/nodes/recommend.py — Nœud 6 : Recommandations
 import json
 from agent.state import AgentState, AnalysisStatus
-from agent.llm.config import get_llm_response
+from agent.llm.config import get_llm_response, extract_json
 
 
 def recommend_node(state: AgentState) -> dict:
@@ -54,7 +54,7 @@ def recommend_node(state: AgentState) -> dict:
     )
     
     try:
-        result = json.loads(response)
+        result = extract_json(response)
         recommendations = result.get("recommendations", [])
     except json.JSONDecodeError:
         recommendations = [{"title": "Recommandations", "description": response}]
