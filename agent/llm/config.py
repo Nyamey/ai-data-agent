@@ -72,8 +72,20 @@ class LLMUnavailableError(RuntimeError):
     Un message clair et déjà traduit ici évite qu'une exception litellm
     brute (souvent un jargon HTTP/JSON illisible pour un utilisateur non
     technique) ne remonte telle quelle jusqu'à l'interface Streamlit ou au
-    terminal -- les appelants n'ont qu'à afficher str(exception).
+    terminal. `user_message` et `technical_detail` sont exposés séparément
+    (en plus de str(exception), qui concatène les deux) pour qu'un appelant
+    comme l'UI Streamlit puisse afficher le premier bien en vue -- pas comme
+    une erreur bloquante, juste une limite temporaire -- et reléguer le
+    second (traces litellm par provider) dans un détail repliable.
     """
+
+    def __init__(self, user_message: str, technical_detail: str = None):
+        super().__init__(
+            f"{user_message} Détail technique : {technical_detail}"
+            if technical_detail else user_message
+        )
+        self.user_message = user_message
+        self.technical_detail = technical_detail
 
 
 def _api_key_for(provider: str) -> str | None:
@@ -177,6 +189,6 @@ def get_llm_response(
     raise LLMUnavailableError(
         "Tous les providers LLM configurés sont actuellement indisponibles "
         "(quota journalier atteint ou panne temporaire). Réessayez plus tard, "
-        "ou configurez une clé pour un autre provider (Groq, OpenRouter, Mistral). "
-        f"Détail technique : {detail}"
+        "ou configurez une clé pour un autre provider (Groq, OpenRouter, Mistral).",
+        technical_detail=detail,
     )

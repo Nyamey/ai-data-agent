@@ -54,6 +54,22 @@ def _clear_all_provider_keys(monkeypatch):
         monkeypatch.delenv(key, raising=False)
 
 
+def test_llm_unavailable_error_exposes_user_message_and_detail_separately():
+    error = LLMUnavailableError("message pour l'utilisateur", technical_detail="trace brute litellm")
+    assert error.user_message == "message pour l'utilisateur"
+    assert error.technical_detail == "trace brute litellm"
+    # str() combine les deux -- pour les appelants qui ne distinguent pas
+    # (CLI, logs, anciens tests) et veulent tout le contexte d'un coup.
+    assert "message pour l'utilisateur" in str(error)
+    assert "trace brute litellm" in str(error)
+
+
+def test_llm_unavailable_error_without_detail_has_no_stray_suffix():
+    error = LLMUnavailableError("message seul")
+    assert error.technical_detail is None
+    assert str(error) == "message seul"
+
+
 def test_get_llm_response_raises_when_no_provider_configured(monkeypatch):
     _clear_all_provider_keys(monkeypatch)
     with pytest.raises(LLMUnavailableError, match="Aucun provider"):
@@ -106,8 +122,17 @@ def test_get_llm_response_raises_with_detail_when_all_providers_fail(monkeypatch
 
     monkeypatch.setattr(llm_config, "completion", fake_completion)
 
-    with pytest.raises(LLMUnavailableError, match="indisponibles"):
+    with pytest.raises(LLMUnavailableError) as exc_info:
         get_llm_response([{"role": "user", "content": "salut"}], provider="groq")
+
+    error = exc_info.value
+    # Le message utilisateur reste lisible sans jargon, la trace litellm par
+    # provider est reléguée à technical_detail -- c'est cette séparation qui
+    # permet à l'UI de n'afficher le second que dans un menu repliable.
+    assert "indisponibles" in error.user_message
+    assert "RuntimeError" not in error.user_message
+    assert "groq" in error.technical_detail
+    assert "openrouter" in error.technical_detail
 
 
 def test_openrouter_fallback_tries_next_free_model_before_giving_up(monkeypatch):

@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 from litellm import completion
 
 from agent.graph import build_agent_graph
+from agent.llm.config import LLMUnavailableError
 from agent.state import AgentState
 from app_utils import (
     build_csv_export,
@@ -55,6 +56,22 @@ def render_date_range(date_range_by_column: dict):
         use_container_width=True,
         hide_index=True,
     )
+
+
+def _render_llm_unavailable_warning(user_message: str, technical_detail: str = None):
+    """Affiche un quota LLM épuisé comme un avertissement, pas une erreur bloquante.
+
+    Une limite journalière atteinte (Groq/OpenRouter/Mistral) n'est pas un
+    bug de l'application -- st.error() (rouge, ton alarmant) donnait
+    pourtant cette impression. st.warning() communique mieux "c'est
+    temporaire, réessayez plus tard", et le détail technique brut (traces
+    litellm par provider) va dans un menu repliable plutôt que d'encombrer
+    le message principal.
+    """
+    st.warning(user_message)
+    if technical_detail:
+        with st.expander("Détails techniques"):
+            st.code(technical_detail)
 
 
 def render_agent_mode(cleaned_files: list, query: str, provider: str, current_source: tuple):
@@ -220,30 +237,14 @@ def _start_joint_agent_inspection(
     thread_id = str(uuid.uuid4())
     checkpoint_path = os.path.join(session_dir, f"checkpoint_{thread_id}.db")
     db_path = os.path.join(session_dir, f"analytics_{thread_id}.duckdb")
-
-    try:
-        with st.spinner("Cadrage et inspection en cours (fichiers croisés)..."):
-            graph = build_agent_graph(checkpoint_path=checkpoint_path)
-            initial_state = AgentState(
-                query=query, data_path=csv_paths[0], data_paths=csv_paths, join_spec=join_spec,
-                db_path=db_path, llm_provider=llm_provider,
-            )
-            config = {"configurable": {"thread_id": thread_id}}
-            for _ in graph.stream(initial_state, config=config, stream_mode="values"):
-                pass
-            snapshot = graph.get_state(config)
-    except Exception as e:
-        runs[run_key] = {"source": current_source, "error": str(e)}
-        return
-
-    runs[run_key] = {
-        "source": current_source,
-        "thread_id": thread_id,
-        "checkpoint_path": checkpoint_path,
-        "awaiting_approval": snapshot.next == ("approval",),
-        "snapshot_values": snapshot.values,
-        "final_event": None,
-    }
+    initial_state = AgentState(
+        query=query, data_path=csv_paths[0], data_paths=csv_paths, join_spec=join_spec,
+        db_path=db_path, llm_provider=llm_provider,
+    )
+    _run_inspection_graph(
+        run_key, initial_state, thread_id, checkpoint_path, current_source, runs,
+        "Cadrage et inspection en cours (fichiers croisés)...",
+    )
 
 
 def _start_agent_inspection(
@@ -256,17 +257,42 @@ def _start_agent_inspection(
     thread_id = str(uuid.uuid4())
     checkpoint_path = os.path.join(session_dir, f"checkpoint_{thread_id}.db")
     db_path = os.path.join(session_dir, f"analytics_{thread_id}.duckdb")
+    initial_state = AgentState(
+        query=query, data_path=csv_path, db_path=db_path, llm_provider=llm_provider,
+    )
+    _run_inspection_graph(
+        run_key, initial_state, thread_id, checkpoint_path, current_source, runs,
+        f"Cadrage et inspection en cours pour {name}...",
+    )
 
+
+def _run_inspection_graph(
+    run_key: str, initial_state: AgentState, thread_id: str, checkpoint_path: str,
+    current_source: tuple, runs: dict, spinner_text: str,
+):
+    """
+    Exécute le graphe jusqu'au point d'interruption et range le résultat dans `runs`.
+
+    Factorisé hors de _start_agent_inspection()/_start_joint_agent_inspection()
+    (mono-fichier vs jointure) : au-delà de la construction de l'état initial,
+    les deux lancent le graphe et gèrent ses échecs de façon identique.
+
+    Distingue LLMUnavailableError (quota LLM épuisé -- une limite temporaire,
+    pas un bug) des autres exceptions, pour que _render_single_agent_run()
+    puisse l'afficher comme un avertissement plutôt qu'une erreur bloquante.
+    """
     try:
-        with st.spinner(f"Cadrage et inspection en cours pour {name}..."):
+        with st.spinner(spinner_text):
             graph = build_agent_graph(checkpoint_path=checkpoint_path)
-            initial_state = AgentState(
-                query=query, data_path=csv_path, db_path=db_path, llm_provider=llm_provider,
-            )
             config = {"configurable": {"thread_id": thread_id}}
             for _ in graph.stream(initial_state, config=config, stream_mode="values"):
                 pass
             snapshot = graph.get_state(config)
+    except LLMUnavailableError as e:
+        runs[run_key] = {
+            "source": current_source, "llm_unavailable": e.user_message, "llm_detail": e.technical_detail,
+        }
+        return
     except Exception as e:
         runs[run_key] = {"source": current_source, "error": str(e)}
         return
@@ -286,6 +312,10 @@ def _render_single_agent_run(run_key: str, current_source: tuple, runs: dict):
     run = runs.get(run_key)
     if not run or run.get("source") != current_source:
         st.info('Clique sur "Lancer le cadrage et l\'inspection" pour démarrer.')
+        return
+
+    if run.get("llm_unavailable"):
+        _render_llm_unavailable_warning(run["llm_unavailable"], run.get("llm_detail"))
         return
 
     if run.get("error"):
@@ -348,9 +378,16 @@ def _render_single_agent_run(run_key: str, current_source: tuple, runs: dict):
                     final_event = {}
                     for event in graph.stream(None, config=config, stream_mode="values"):
                         final_event = event
+            except LLMUnavailableError as e:
+                _render_llm_unavailable_warning(
+                    f"{e.user_message} Réessaie en cliquant à nouveau sur Approuver/Rejeter une fois "
+                    "le quota rétabli.",
+                    e.technical_detail,
+                )
+                return
             except Exception as e:
                 st.error(
-                    f"L'analyse a échoué (provider LLM temporairement indisponible ?) : {e}\n\n"
+                    f"L'analyse a échoué de façon inattendue : {e}\n\n"
                     "Réessaie en cliquant à nouveau sur Approuver/Rejeter."
                 )
                 return
@@ -660,9 +697,11 @@ with col2:
                             st.session_state["history"] = st.session_state["history"][-20:]
                         else:
                             st.session_state["last_result"] = None
-                            st.error(
+                            _render_llm_unavailable_warning(
                                 f"Tous les modèles gratuits sont temporairement indisponibles "
-                                f"({provider}). Réessaie dans quelques instants. Détail : {last_error}"
+                                f"({provider}). Réessaie dans quelques instants, ou choisis l'autre "
+                                "provider dans la barre latérale.",
+                                str(last_error),
                             )
 
         # Affichage du dernier résultat — indépendant du déclencheur ci-dessus,
