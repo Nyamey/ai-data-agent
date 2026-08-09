@@ -14,7 +14,11 @@ if hasattr(sys.stdout, "reconfigure"):
 
 
 def _print_progress(event: dict):
-    print(f"\n[Statut : {event.get('status', 'En cours d\'exécution')}]")
+    # Chaîne intermédiaire pour éviter un backslash dans l'expression d'une
+    # f-string, syntaxe invalide avant Python 3.12 (PEP 701) -- la CI teste
+    # aussi 3.11.
+    status_label = event.get("status", "En cours d'exécution")
+    print(f"\n[Statut : {status_label}]")
     audit_trail = event.get("audit_trail")
     if audit_trail:
         print(f"  Dernière action : {audit_trail[-1]}")
