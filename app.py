@@ -394,20 +394,19 @@ def render_agent_mode(cleaned_files: list, query: str, provider: str, current_so
     values = run["snapshot_values"]
 
     st.subheader("Cadrage")
-    c1, c2 = st.columns(2)
-    c1.metric("Métrique", values.get("metric_definition") or "Non définie")
-    c2.metric("Période de comparaison", values.get("comparison_period") or "Non définie")
     st.write("**Question reformulée :**", values.get("business_question"))
+    st.write("**Métrique :**", values.get("metric_definition") or "Non définie")
+    st.write("**Période de comparaison :**", values.get("comparison_period") or "Non définie")
     if values.get("assumptions"):
         st.write("**Hypothèses :**", ", ".join(values["assumptions"]))
 
     meta = values.get("data_metadata") or {}
     st.subheader("Inspection des données")
-    i1, i2, i3, i4 = st.columns(4)
+    i1, i2, i3 = st.columns(3)
     i1.metric("Lignes", meta.get("row_count", "-"))
     i2.metric("Colonnes", len(meta.get("schema", [])))
     i3.metric("Doublons", meta.get("duplicate_count", "-"))
-    i4.metric("Colonne ID détectée", meta.get("id_column") or "Aucune")
+    st.write("**Colonne identifiant détectée :**", meta.get("id_column") or "Aucune")
     if meta.get("null_counts"):
         st.warning(f"Valeurs manquantes : {meta['null_counts']}")
     if meta.get("date_range"):
@@ -470,19 +469,20 @@ def render_agent_mode(cleaned_files: list, query: str, provider: str, current_so
             st.subheader("Validation")
             for check_name, check in checks.items():
                 status = "OK" if check.get("passed") else "ÉCHEC"
-                st.write(f"- **{check_name}** : {status} — {check.get('result')}")
+                with st.expander(f"{check_name.replace('_', ' ').capitalize()} — {status}"):
+                    st.markdown(str(check.get("result")))
 
         recommendations = final.get("recommendations") or []
         if recommendations:
             st.subheader("Recommandations")
             for i, rec in enumerate(recommendations, 1):
-                st.markdown(f"**{i}. {rec.get('title', 'Sans titre')}**")
-                st.write(rec.get("description", ""))
-                st.caption(
-                    f"Impact : {rec.get('impact', 'N/A')} · "
-                    f"Faisabilité : {rec.get('feasibility', 'N/A')} · "
-                    f"Délai : {rec.get('timeline', 'N/A')}"
-                )
+                with st.container(border=True):
+                    st.markdown(f"**{i}. {rec.get('title', 'Sans titre')}**")
+                    st.write(rec.get("description", ""))
+                    m1, m2, m3 = st.columns(3)
+                    m1.write(f"**Impact**\n\n{str(rec.get('impact', 'N/A')).capitalize()}")
+                    m2.write(f"**Faisabilité**\n\n{str(rec.get('feasibility', 'N/A')).capitalize()}")
+                    m3.write(f"**Délai**\n\n{str(rec.get('timeline', 'N/A')).capitalize()}")
 
     if st.button("Nouvelle analyse (agent)"):
         del st.session_state["agent_run"]
