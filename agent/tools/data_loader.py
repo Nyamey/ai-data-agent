@@ -1,10 +1,33 @@
 # agent/tools/data_loader.py — Chargement et inspection de données avec DuckDB
+import re
 import duckdb
 import os
 from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv()
+
+ID_COLUMN_PATTERN = re.compile(r"(^id$)|(_id$)|(^id_)", re.IGNORECASE)
+
+
+def detect_id_column(schema: list[dict], date_columns: list[str]) -> str | None:
+    """
+    Devine la colonne qui identifie une entité (ex. customer_id), pour
+    généraliser les métriques ("nombre d'entités distinctes") à un CSV
+    quelconque plutôt que de supposer un nom de colonne fixe.
+
+    Heuristique : première colonne dont le nom matche id/_id/id_, en
+    excluant les colonnes de date. À défaut, aucune colonne n'est
+    retenue et les métriques retombent sur un simple COUNT(*).
+    """
+    for s in schema:
+        col = s["column_name"]
+        if col in date_columns:
+            continue
+        if ID_COLUMN_PATTERN.search(col):
+            return col
+    return None
+
 
 def load_data(csv_path: str, db_path: str = None) -> dict:
     """
@@ -76,7 +99,9 @@ def load_data(csv_path: str, db_path: str = None) -> dict:
     """).fetchone()[0]
     
     con.close()
-    
+
+    id_column = detect_id_column(schema, date_columns)
+
     return {
         "table_name": table_name,
         "schema": schema,
@@ -84,6 +109,11 @@ def load_data(csv_path: str, db_path: str = None) -> dict:
         "date_range": date_range,
         "null_counts": null_counts,
         "duplicate_count": duplicate_count,
+        "id_column": id_column,
+        # Chemin DuckDB effectivement utilisé (résolu depuis l'argument ou
+        # DUCKDB_PATH) -- propagé aux nœuds suivants pour qu'ils interrogent
+        # la même base, y compris quand un chemin par session est utilisé.
+        "db_path": db_path,
     }
 
 

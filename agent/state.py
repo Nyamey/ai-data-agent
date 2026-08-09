@@ -30,6 +30,15 @@ class AgentState(BaseModel):
     query: str = Field(description="La question commerciale à résoudre")
     data_path: str = Field(description="Chemin vers le fichier de données")
     output_language: str = Field(default="fr", description="Langue des livrables")
+    db_path: Optional[str] = Field(
+        default=None,
+        description="Chemin DuckDB à utiliser (par défaut DUCKDB_PATH) -- "
+        "permet d'isoler les analyses concurrentes (ex. sessions Streamlit)",
+    )
+    llm_provider: Optional[str] = Field(
+        default=None,
+        description="Provider LLM à utiliser (par défaut DEFAULT_LLM_PROVIDER)",
+    )
     
     # --- État de progression ---
     status: AnalysisStatus = Field(default=AnalysisStatus.PENDING)
