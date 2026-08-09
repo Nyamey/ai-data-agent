@@ -289,8 +289,14 @@ def _run_inspection_graph(
                 pass
             snapshot = graph.get_state(config)
     except LLMUnavailableError as e:
+        # getattr() en défense en profondeur : un redéploiement Streamlit
+        # Cloud a déjà surpris une instance encore sur l'ancienne classe
+        # LLMUnavailableError (sans ces attributs) pendant la bascule --
+        # jamais une AttributeError ici, même dans ce cas transitoire.
         runs[run_key] = {
-            "source": current_source, "llm_unavailable": e.user_message, "llm_detail": e.technical_detail,
+            "source": current_source,
+            "llm_unavailable": getattr(e, "user_message", str(e)),
+            "llm_detail": getattr(e, "technical_detail", None),
         }
         return
     except Exception as e:
@@ -380,9 +386,9 @@ def _render_single_agent_run(run_key: str, current_source: tuple, runs: dict):
                         final_event = event
             except LLMUnavailableError as e:
                 _render_llm_unavailable_warning(
-                    f"{e.user_message} Réessaie en cliquant à nouveau sur Approuver/Rejeter une fois "
-                    "le quota rétabli.",
-                    e.technical_detail,
+                    f"{getattr(e, 'user_message', str(e))} Réessaie en cliquant à nouveau sur "
+                    "Approuver/Rejeter une fois le quota rétabli.",
+                    getattr(e, "technical_detail", None),
                 )
                 return
             except Exception as e:
