@@ -31,7 +31,7 @@ La plupart des outils « text-to-SQL » sautent directement à la requête et pr
 - **Étape de validation** : rapprochement des comptes, vérification de reproductibilité et de cohérence des résultats.
 - **Recommandations classées** par impact, faisabilité et délai.
 - **Export automatique Excel/PowerPoint** : le dernier nœud du graphe régénère un classeur Excel (métrique construite, un onglet par facteur explicatif, validation) et une présentation PowerPoint à partir des résultats réels de l'analyse, puis vérifie automatiquement que les chiffres des deux fichiers concordent.
-- **Pipeline de streaming** : surveillance d'un dossier (watchdog) qui déclenche une analyse à l'arrivée d'un nouveau fichier, mais uniquement quand le détecteur d'anomalies par z-score (`AnomalyDetector`) juge la volumétrie anormale (ou, au tout début, tant qu'il n'a pas assez d'historique pour juger) — pas à chaque fichier reçu. Deux modes explicites : approbation automatique (`require_approval=False`, par défaut) ou mise en attente explicite (`require_approval=True`, avec `pipeline.approve(thread_id)` / `.reject(thread_id)`).
+- **Pipeline de streaming** : surveillance d'un dossier (watchdog) qui déclenche une analyse à l'arrivée d'un nouveau fichier, mais uniquement quand le détecteur d'anomalies par z-score (`AnomalyDetector`) juge la volumétrie anormale (ou, au tout début, tant qu'il n'a pas assez d'historique pour juger) — pas à chaque fichier reçu. Deux modes explicites : approbation automatique (`require_approval=False`, par défaut) ou mise en attente explicite (`require_approval=True`, avec `pipeline.approve(thread_id)` / `.reject(thread_id)`). Les livrables Excel/PowerPoint de chaque analyse terminée sont copiés dans `./outputs/stream/` sous un nom dérivé du fichier source.
 - **Serveur MCP DuckDB** : expose la base analytique aux assistants IA compatibles MCP.
 - **Interface Streamlit** : deux modes sélectionnables. « Analyse simple » (upload jusqu'à 5 fichiers CSV, nettoyage automatique, analyse LLM en une passe, export Markdown / CSV / Excel / PowerPoint) et « Agent complet » (le workflow LangGraph en 8 étapes ci-dessus, avec un onglet indépendant par fichier téléversé — cadrage, inspection, validation humaine et livrables propres à chacun). Chaque session Streamlit utilise ses propres fichiers DuckDB/checkpoint pour ne pas interférer avec les autres utilisateurs d'un déploiement partagé.
 - **Multi-provider LLM avec fallback** : Groq, Gemini, OpenRouter, Mistral via LiteLLM. L'agent CLI bascule automatiquement vers OpenRouter (modèle gratuit) si le provider principal échoue, en essayant plusieurs modèles gratuits en cascade si l'un est rate-limité ; Gemini n'est plus utilisé comme filet de secours car son accès via l'API Generative Language nécessite désormais une facturation activée sur de nombreux comptes. Dans l'app Streamlit, le choix Groq/OpenRouter est manuel (menu déroulant), avec la même cascade de repli.
@@ -169,6 +169,8 @@ pipeline.start()
 
 Déposez un CSV dans le dossier surveillé : une analyse n'est déclenchée que si le détecteur d'anomalies juge la volumétrie du nouveau fichier anormale par rapport à l'historique récent (ou, au tout début, tant qu'il n'a pas assez de données pour en juger) — pas à chaque fichier reçu. Avec `require_approval=True`, l'analyse déclenchée reste en attente dans `pipeline.pending` jusqu'à un appel explicite à `pipeline.approve(thread_id)` ou `pipeline.reject(thread_id)`.
 
+Quand une analyse va au bout (approuvée), ses livrables Excel/PowerPoint (générés par le même `export_node` que les modes CLI/Streamlit) sont copiés dans `./outputs/stream/` sous un nom dérivé du fichier source (ex. `ventes_quotidiennes_rapport_20260101_120000.xlsx`), et leur chemin est affiché dans la sortie du pipeline — configurable via `deliverables_dir`.
+
 ### Serveur MCP
 
 ```bash
@@ -215,7 +217,9 @@ pip install -r requirements.txt
 python -m pytest tests/ -v
 ```
 
-La suite couvre le nettoyage/export de données (`app_utils.py`), le chargement DuckDB et la détection de schéma (fichier seul et jointure multi-fichiers), l'extraction de JSON depuis une réponse LLM imparfaite, les nœuds de l'agent qui ne nécessitent pas de LLM (`build`, `test`, `validate`, `approval`, `inspection` — y compris le test de significativité chi²), la décision de déclenchement du pipeline de streaming (avec un faux graphe, sans appel réseau), le générateur Excel et la vérification de cohérence Excel/PowerPoint. Les nœuds qui appellent un LLM (`framing`, `recommend`) ne sont volontairement pas couverts par des tests automatisés — les vérifier nécessiterait soit un vrai appel LLM (coûteux, non déterministe), soit un mock qui ne testerait que le mock. Une intégration continue (GitHub Actions, [`.github/workflows/tests.yml`](.github/workflows/tests.yml)) exécute cette suite sur Python 3.11 et 3.12 à chaque push/PR sur `main`, sans clé API requise.
+La suite couvre le nettoyage/export de données (`app_utils.py`), le chargement DuckDB et la détection de schéma (fichier seul et jointure multi-fichiers), l'extraction de JSON depuis une réponse LLM imparfaite, tous les nœuds de l'agent — y compris `framing` et `recommend` (qui appellent un LLM), le test de significativité chi² et le repli entre providers LLM — la décision de déclenchement du pipeline de streaming et l'organisation de ses livrables (avec un faux graphe, sans appel réseau), le générateur Excel et la vérification de cohérence Excel/PowerPoint.
+
+Pour `framing`/`recommend`, seul l'appel réseau est simulé (`litellm.completion`, avec des réponses représentatives d'un vrai modèle — JSON dans un bloc ```json, ou texte libre sans JSON) : `get_llm_response()`, l'extraction JSON et la logique des nœuds tournent pour de vrai, sans dépendre d'un provider externe ni de sa disponibilité du jour. Une intégration continue (GitHub Actions, [`.github/workflows/tests.yml`](.github/workflows/tests.yml)) exécute cette suite sur Python 3.11 et 3.12 à chaque push/PR sur `main`, sans clé API requise.
 
 ---
 
@@ -234,8 +238,8 @@ Toutes les étapes prévues sont complétées :
 - [x] Jeu de données d'exemple et démo reproductible (`data/sample_data.csv`)
 - [x] Suite de tests automatisés et intégration continue
 - [x] Analyse croisée entre plusieurs fichiers liés (jointure configurable par l'utilisateur, jusqu'à 5 fichiers)
-
-Idées non planifiées pour la suite : couverture de tests des nœuds `framing`/`recommend` via un provider LLM local/déterministe, export des livrables du pipeline de streaming.
+- [x] Couverture de tests des nœuds `framing`/`recommend` (réponse LLM simulée, reste de la chaîne réel)
+- [x] Export des livrables du pipeline de streaming (copiés dans `./outputs/stream/`, nommés d'après le fichier source)
 
 ---
 

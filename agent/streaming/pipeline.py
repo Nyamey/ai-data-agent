@@ -1,4 +1,5 @@
 # agent/streaming/pipeline.py — Pipeline complet d'analyse en streaming
+import shutil
 import uuid
 from pathlib import Path
 import duckdb
@@ -34,11 +35,13 @@ class StreamingAnalysisPipeline:
         checkpoint_path: str = None,
         anomaly_window: int = 12,
         anomaly_threshold: float = 2.0,
+        deliverables_dir: str = "./outputs/stream",
     ):
         self.watch_dir = watch_dir
         self.require_approval = require_approval
         self.db_path = db_path or "./data/stream_analytics.duckdb"
         self.checkpoint_path = checkpoint_path or "./data/stream_memory.db"
+        self.deliverables_dir = deliverables_dir
         self.detector = AnomalyDetector(window_size=anomaly_window, threshold=anomaly_threshold)
         self.pending = {}  # thread_id -> {"graph", "config", "file_path"}
         Path(watch_dir).mkdir(parents=True, exist_ok=True)
@@ -50,6 +53,34 @@ class StreamingAnalysisPipeline:
             return con.execute(f"SELECT COUNT(*) FROM read_csv_auto('{file_path}')").fetchone()[0]
         finally:
             con.close()
+
+    def _report_deliverables(self, source_file_path: str, final_state: dict):
+        """
+        Rend visibles les livrables Excel/PPTX d'une analyse déclenchée par le streaming.
+
+        export_node (agent/nodes/export.py) génère déjà ces fichiers pour
+        n'importe quel appelant du graphe (CLI, Streamlit, ici) sous
+        `./outputs/rapport_<horodatage>.xlsx` -- mais ce nom générique ne dit
+        pas quel fichier source a déclenché l'analyse, et rien ne le
+        signalait jusqu'ici à qui pilote le pipeline de streaming. On copie
+        donc les livrables dans un dossier dédié, nommés d'après le fichier
+        source, et on l'annonce -- sans changer export_node lui-même, qui
+        reste indépendant de son appelant.
+        """
+        excel_path = final_state.get("excel_path")
+        presentation_path = final_state.get("presentation_path")
+        if not excel_path and not presentation_path:
+            return
+
+        stem = Path(source_file_path).stem
+        dest_dir = Path(self.deliverables_dir)
+        dest_dir.mkdir(parents=True, exist_ok=True)
+
+        for src in filter(None, [excel_path, presentation_path]):
+            src_path = Path(src)
+            dest_path = dest_dir / f"{stem}_{src_path.name}"
+            shutil.copy2(src_path, dest_path)
+            print(f"[PIPELINE] Livrable disponible : {dest_path}")
 
     def on_new_data(self, file_path: str):
         """Callback appelé quand un nouveau fichier arrive."""
@@ -109,8 +140,9 @@ class StreamingAnalysisPipeline:
             for event in graph.stream(None, config=config, stream_mode="values"):
                 print(f"  [Statut : {event['status']}]")
 
-        final_status = graph.get_state(config).values.get("status")
-        print(f"[PIPELINE] Analyse terminée avec le statut : {final_status}")
+        final = graph.get_state(config).values
+        print(f"[PIPELINE] Analyse terminée avec le statut : {final.get('status')}")
+        self._report_deliverables(file_path, final)
 
     def approve(self, thread_id: str) -> dict:
         """Approuve une analyse en attente (mode require_approval=True)."""
@@ -130,6 +162,7 @@ class StreamingAnalysisPipeline:
             print(f"  [Statut : {event['status']}]")
         final = graph.get_state(config).values
         print(f"[PIPELINE] Analyse terminée avec le statut : {final.get('status')}")
+        self._report_deliverables(pending["file_path"], final)
         return final
 
     def start(self):

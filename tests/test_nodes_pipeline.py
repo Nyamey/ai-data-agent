@@ -131,30 +131,7 @@ def test_inspection_node_uses_load_joined_data_with_join_spec(sample_joinable_cs
     assert "clients__segment" in columns
 
 
-def test_framing_node_prompt_mentions_all_joined_files(monkeypatch, sample_joinable_csvs):
-    import agent.nodes.framing as framing_module
-
-    captured = {}
-
-    def fake_get_llm_response(messages, provider=None, temperature=0.3):
-        captured["prompt"] = messages[0]["content"]
-        return '{"metric_definition": "m", "business_question": "q", "comparison_period": "p", "assumptions": []}'
-
-    monkeypatch.setattr(framing_module, "get_llm_response", fake_get_llm_response)
-
-    paths = sample_joinable_csvs
-    join_spec = {
-        "root": paths["commandes"],
-        "joins": [
-            {"file": paths["clients"], "on_file": paths["commandes"],
-             "file_column": "id", "on_column": "client_id_ref", "how": "inner"},
-        ],
-    }
-    state = AgentState(
-        query="Analyse les commandes par client", data_path=paths["commandes"],
-        data_paths=[paths["commandes"], paths["clients"]], join_spec=join_spec,
-    )
-    framing_module.framing_node(state)
-
-    assert paths["commandes"] in captured["prompt"]
-    assert paths["clients"] in captured["prompt"]
+# Le cas "framing_node mentionne bien tous les fichiers joints dans son
+# prompt" est couvert par tests/test_framing_recommend.py, qui exerce en
+# plus le vrai chemin get_llm_response()/extract_json() (pas juste
+# get_llm_response mocké en bloc).

@@ -4,6 +4,8 @@
 # tests vérifient la DÉCISION de déclenchement (AnomalyDetector -> lance ou
 # non une analyse) et les deux modes d'approbation, pas le contenu réel
 # d'une analyse (couvert par tests/test_nodes_pipeline.py).
+from pathlib import Path
+
 import agent.graph
 from agent.state import AnalysisStatus
 from agent.streaming.pipeline import StreamingAnalysisPipeline
@@ -18,9 +20,14 @@ class FakeSnapshot:
 class FakeGraph:
     """Simule un graphe qui s'arrête toujours avant 'approval'."""
 
-    def __init__(self):
+    def __init__(self, excel_path=None, presentation_path=None):
         self.updated_with = None
         self.resumed = False
+        # export_node ne produit ces chemins que lorsque l'analyse va au bout
+        # (approuvée) -- un rejet ne les inclut donc jamais, ici comme dans
+        # le vrai graphe (approval_check_node coupe court avant "export").
+        self.excel_path = excel_path
+        self.presentation_path = presentation_path
 
     def stream(self, state, config, stream_mode="values"):
         if state is None:
@@ -34,7 +41,11 @@ class FakeGraph:
     def get_state(self, config):
         if self.resumed:
             status = AnalysisStatus.COMPLETED if self.updated_with else AnalysisStatus.FAILED
-            return FakeSnapshot((), {"status": status})
+            values = {"status": status}
+            if self.updated_with:
+                values["excel_path"] = self.excel_path
+                values["presentation_path"] = self.presentation_path
+            return FakeSnapshot((), values)
         return FakeSnapshot(("approval",), {"status": AnalysisStatus.AWAITING_APPROVAL})
 
     def update_state(self, config, values):
@@ -145,3 +156,81 @@ def test_reject_resumes_with_approval_false(monkeypatch, tmp_path):
 
     assert fake.updated_with is False
     assert final["status"] == AnalysisStatus.FAILED
+
+
+# --- Livrables (Excel/PPTX) des analyses déclenchées par le streaming ---
+
+def _fake_deliverable(tmp_path, name):
+    """Crée un fichier factice à l'emplacement qu'aurait produit export_node."""
+    path = tmp_path / "export_source" / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("contenu factice")
+    return str(path)
+
+
+def test_report_deliverables_is_a_noop_without_excel_or_pptx(tmp_path):
+    pipeline = _pipeline(tmp_path)
+    pipeline._report_deliverables("data/source.csv", {"status": AnalysisStatus.COMPLETED})
+    assert not Path(pipeline.deliverables_dir).exists()
+
+
+def test_report_deliverables_copies_and_renames_after_source_file(tmp_path):
+    excel = _fake_deliverable(tmp_path, "rapport_20260101_120000.xlsx")
+    pptx = _fake_deliverable(tmp_path, "presentation_20260101_120000.pptx")
+    pipeline = _pipeline(tmp_path, deliverables_dir=str(tmp_path / "livrables"))
+
+    pipeline._report_deliverables(
+        "data/stream/ventes_quotidiennes.csv",
+        {"excel_path": excel, "presentation_path": pptx},
+    )
+
+    dest_dir = Path(pipeline.deliverables_dir)
+    assert (dest_dir / "ventes_quotidiennes_rapport_20260101_120000.xlsx").read_text() == "contenu factice"
+    assert (dest_dir / "ventes_quotidiennes_presentation_20260101_120000.pptx").exists()
+    # Le fichier généré par export_node reste en place (copie, pas déplacement) --
+    # d'autres appelants (Streamlit, CLI) partagent le même dossier ./outputs.
+    assert Path(excel).exists()
+
+
+def test_on_new_data_reports_deliverables_after_auto_approval(monkeypatch, tmp_path):
+    excel = _fake_deliverable(tmp_path, "rapport.xlsx")
+    fake = FakeGraph(excel_path=excel, presentation_path=None)
+    _patch_graph(monkeypatch, tmp_path, [fake])
+    pipeline = _pipeline(tmp_path, require_approval=False, deliverables_dir=str(tmp_path / "livrables"))
+    monkeypatch.setattr(pipeline, "_row_count", lambda path: 100)
+
+    pipeline.on_new_data(str(tmp_path / "ventes.csv"))
+
+    assert (Path(pipeline.deliverables_dir) / "ventes_rapport.xlsx").exists()
+
+
+def test_approve_reports_deliverables_for_pending_analysis(monkeypatch, tmp_path):
+    excel = _fake_deliverable(tmp_path, "rapport.xlsx")
+    pptx = _fake_deliverable(tmp_path, "presentation.pptx")
+    fake = FakeGraph(excel_path=excel, presentation_path=pptx)
+    _patch_graph(monkeypatch, tmp_path, [fake])
+    pipeline = _pipeline(tmp_path, require_approval=True, deliverables_dir=str(tmp_path / "livrables"))
+    monkeypatch.setattr(pipeline, "_row_count", lambda path: 100)
+
+    pipeline.on_new_data(str(tmp_path / "ventes.csv"))
+    thread_id = next(iter(pipeline.pending))
+    pipeline.approve(thread_id)
+
+    dest_dir = Path(pipeline.deliverables_dir)
+    assert (dest_dir / "ventes_rapport.xlsx").exists()
+    assert (dest_dir / "ventes_presentation.pptx").exists()
+
+
+def test_reject_produces_no_deliverables(monkeypatch, tmp_path):
+    fake = FakeGraph(excel_path=_fake_deliverable(tmp_path, "rapport.xlsx"))
+    _patch_graph(monkeypatch, tmp_path, [fake])
+    pipeline = _pipeline(tmp_path, require_approval=True, deliverables_dir=str(tmp_path / "livrables"))
+    monkeypatch.setattr(pipeline, "_row_count", lambda path: 100)
+
+    pipeline.on_new_data(str(tmp_path / "ventes.csv"))
+    thread_id = next(iter(pipeline.pending))
+    pipeline.reject(thread_id)
+
+    # FakeGraph n'inclut excel_path que si updated_with (approuvé) est vrai --
+    # un rejet ne doit donc produire aucun livrable, comme le vrai graphe.
+    assert not Path(pipeline.deliverables_dir).exists()
