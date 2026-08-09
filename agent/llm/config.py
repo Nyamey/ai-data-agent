@@ -181,14 +181,20 @@ def get_llm_response(
             errors[p] = error
 
     if not errors:
+        # Message pour l'utilisateur final de l'app déployée : il ne peut de
+        # toute façon pas configurer de clé API lui-même -- cette instruction
+        # ne concerne que l'administrateur, reléguée dans technical_detail.
         raise LLMUnavailableError(
-            "Aucun provider LLM n'est configuré : renseignez au moins une clé API "
-            "(GROQ_API_KEY, OPENROUTER_API_KEY ou MISTRAL_API_KEY)."
+            "Le service d'analyse IA n'est pas configuré pour le moment. "
+            "Merci de réessayer plus tard.",
+            technical_detail=(
+                "Aucun provider LLM configuré : renseignez au moins une clé API "
+                "(GROQ_API_KEY, OPENROUTER_API_KEY ou MISTRAL_API_KEY)."
+            ),
         )
     detail = " ; ".join(f"{p} : {e}" for p, e in errors.items())
     raise LLMUnavailableError(
         "Tous les providers LLM configurés sont actuellement indisponibles "
-        "(quota journalier atteint ou panne temporaire). Réessayez plus tard, "
-        "ou configurez une clé pour un autre provider (Groq, OpenRouter, Mistral).",
+        "(quota journalier atteint ou panne temporaire). Réessayez plus tard.",
         technical_detail=detail,
     )

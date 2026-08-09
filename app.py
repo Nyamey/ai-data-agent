@@ -64,14 +64,17 @@ def _render_llm_unavailable_warning(user_message: str, technical_detail: str = N
     Une limite journalière atteinte (Groq/OpenRouter/Mistral) n'est pas un
     bug de l'application -- st.error() (rouge, ton alarmant) donnait
     pourtant cette impression. st.warning() communique mieux "c'est
-    temporaire, réessayez plus tard", et le détail technique brut (traces
-    litellm par provider) va dans un menu repliable plutôt que d'encombrer
-    le message principal.
+    temporaire, réessayez plus tard".
+
+    Le détail technique (traces litellm par provider) n'a rien à faire dans
+    l'interface : un visiteur de l'app déployée n'a ni besoin ni moyen d'agir
+    dessus (il ne peut pas configurer de clé API). Il part uniquement dans
+    les logs serveur (console en local, "Manage app" → logs sur Streamlit
+    Cloud), consultables par qui exploite l'app, pas par qui l'utilise.
     """
     st.warning(user_message)
     if technical_detail:
-        with st.expander("Détails techniques"):
-            st.code(technical_detail)
+        print(f"[LLM indisponible] {technical_detail}")
 
 
 def render_agent_mode(cleaned_files: list, query: str, provider: str, current_source: tuple):
