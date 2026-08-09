@@ -56,6 +56,32 @@ def neutralize_formulas(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def render_missing_values(missing_by_column: dict):
+    """Affiche les valeurs manquantes par colonne en tableau plutôt qu'en dict brut."""
+    st.warning("Valeurs manquantes restantes :")
+    st.dataframe(
+        pd.DataFrame(
+            {"Colonne": col, "Valeurs manquantes": count}
+            for col, count in missing_by_column.items()
+        ),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+
+def render_date_range(date_range_by_column: dict):
+    """Affiche la plage de dates par colonne en tableau plutôt qu'en dict brut imbriqué."""
+    st.caption("Plage de dates :")
+    st.dataframe(
+        pd.DataFrame(
+            {"Colonne": col, "Min": r.get("min"), "Max": r.get("max")}
+            for col, r in date_range_by_column.items()
+        ),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+
 def read_csv_robust(uploaded_file) -> tuple[pd.DataFrame, str]:
     """Lit un CSV en devinant l'encodage et le séparateur (utile pour les exports Excel FR).
 
@@ -408,9 +434,9 @@ def render_agent_mode(cleaned_files: list, query: str, provider: str, current_so
     i3.metric("Doublons", meta.get("duplicate_count", "-"))
     st.write("**Colonne identifiant détectée :**", meta.get("id_column") or "Aucune")
     if meta.get("null_counts"):
-        st.warning(f"Valeurs manquantes : {meta['null_counts']}")
+        render_missing_values(meta["null_counts"])
     if meta.get("date_range"):
-        st.caption(f"Plage de dates : {meta['date_range']}")
+        render_date_range(meta["date_range"])
 
     if not run["awaiting_approval"]:
         st.error("L'inspection s'est terminée en erreur avant le point d'approbation.")
@@ -611,7 +637,7 @@ with col2:
                     if cleaning_report["columns_converted_date"]:
                         st.caption(f"Colonnes converties en dates : {', '.join(cleaning_report['columns_converted_date'])}")
                     if cleaning_report["missing_values"]:
-                        st.warning(f"Valeurs manquantes restantes : {cleaning_report['missing_values']}")
+                        render_missing_values(cleaning_report["missing_values"])
                     else:
                         st.success("Aucune valeur manquante restante.")
 
