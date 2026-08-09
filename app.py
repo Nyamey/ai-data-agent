@@ -3,6 +3,8 @@ import csv
 import io
 import os
 import re
+import tempfile
+import uuid
 import zipfile
 from datetime import datetime
 import numpy as np
@@ -16,6 +18,9 @@ from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
 from litellm import completion
+
+from agent.graph import build_agent_graph
+from agent.state import AgentState
 
 MAX_FILES = 5
 
@@ -326,6 +331,153 @@ def build_pptx_report(query: str, model_used: str, files: list, analysis_text: s
     return buf.getvalue()
 
 
+def render_agent_mode(cleaned_files: list, query: str, provider: str, current_source: tuple):
+    """
+    Pilote le workflow agent en 7 étapes (agent/graph.py) depuis l'UI.
+
+    Le graphe est compilé avec `interrupt_before=["approval"]` : il s'arrête
+    réellement avant l'étape d'approbation (pas de input() bloquant). Cette
+    fonction affiche le cadrage/l'inspection, recueille la décision humaine
+    via deux boutons, puis reprend l'exécution avec `update_state` +
+    `stream(None, ...)`.
+
+    N'analyse qu'un seul fichier à la fois (le graphe attend un data_path
+    unique) ; chaque session Streamlit utilise ses propres fichiers DuckDB
+    et de checkpoint pour ne pas interférer avec les autres utilisateurs.
+    """
+    if len(cleaned_files) > 1:
+        st.info("Le mode agent n'analyse qu'un seul fichier à la fois : seul le premier sera utilisé.")
+    name, df = cleaned_files[0]
+
+    session_dir = st.session_state.setdefault(
+        "agent_session_dir", tempfile.mkdtemp(prefix="ai_data_agent_")
+    )
+    llm_provider = "groq" if "Groq" in provider else "openrouter"
+
+    if st.session_state.get("agent_trigger_inspect"):
+        st.session_state["agent_trigger_inspect"] = False
+        csv_path = os.path.join(session_dir, "data.csv")
+        df.to_csv(csv_path, index=False)
+
+        thread_id = str(uuid.uuid4())
+        checkpoint_path = os.path.join(session_dir, f"checkpoint_{thread_id}.db")
+        db_path = os.path.join(session_dir, f"analytics_{thread_id}.duckdb")
+
+        with st.spinner("Cadrage et inspection en cours..."):
+            graph = build_agent_graph(checkpoint_path=checkpoint_path)
+            initial_state = AgentState(
+                query=query, data_path=csv_path, db_path=db_path, llm_provider=llm_provider,
+            )
+            config = {"configurable": {"thread_id": thread_id}}
+            for _ in graph.stream(initial_state, config=config, stream_mode="values"):
+                pass
+            snapshot = graph.get_state(config)
+
+        st.session_state["agent_run"] = {
+            "source": current_source,
+            "thread_id": thread_id,
+            "checkpoint_path": checkpoint_path,
+            "awaiting_approval": snapshot.next == ("approval",),
+            "snapshot_values": snapshot.values,
+            "final_event": None,
+        }
+
+    run = st.session_state.get("agent_run")
+    if not run or run.get("source") != current_source:
+        st.info('Clique sur "Lancer le cadrage et l\'inspection" pour démarrer.')
+        return
+
+    values = run["snapshot_values"]
+
+    st.subheader("Cadrage")
+    c1, c2 = st.columns(2)
+    c1.metric("Métrique", values.get("metric_definition") or "Non définie")
+    c2.metric("Période de comparaison", values.get("comparison_period") or "Non définie")
+    st.write("**Question reformulée :**", values.get("business_question"))
+    if values.get("assumptions"):
+        st.write("**Hypothèses :**", ", ".join(values["assumptions"]))
+
+    meta = values.get("data_metadata") or {}
+    st.subheader("Inspection des données")
+    i1, i2, i3, i4 = st.columns(4)
+    i1.metric("Lignes", meta.get("row_count", "-"))
+    i2.metric("Colonnes", len(meta.get("schema", [])))
+    i3.metric("Doublons", meta.get("duplicate_count", "-"))
+    i4.metric("Colonne ID détectée", meta.get("id_column") or "Aucune")
+    if meta.get("null_counts"):
+        st.warning(f"Valeurs manquantes : {meta['null_counts']}")
+    if meta.get("date_range"):
+        st.caption(f"Plage de dates : {meta['date_range']}")
+
+    if not run["awaiting_approval"]:
+        st.error("L'inspection s'est terminée en erreur avant le point d'approbation.")
+        return
+
+    if run["final_event"] is None:
+        st.markdown("---")
+        st.subheader("Validation humaine requise")
+        col_a, col_b = st.columns(2)
+        approve = col_a.button("Approuver", type="primary", use_container_width=True, key="agent_approve")
+        reject = col_b.button("Rejeter", use_container_width=True, key="agent_reject")
+
+        if approve or reject:
+            with st.spinner("Analyse en cours..."):
+                graph = build_agent_graph(checkpoint_path=run["checkpoint_path"])
+                config = {"configurable": {"thread_id": run["thread_id"]}}
+                graph.update_state(config, {"approval_received": approve})
+                final_event = {}
+                for event in graph.stream(None, config=config, stream_mode="values"):
+                    final_event = event
+            run["final_event"] = final_event
+            st.session_state["agent_run"] = run
+            st.rerun()
+        return
+
+    final = run["final_event"]
+    if final.get("errors"):
+        st.error(f"Analyse rejetée ou en erreur : {', '.join(final['errors'])}")
+    else:
+        st.success("Analyse terminée.")
+
+        weekly = final.get("weekly_retention") or {}
+        if weekly.get("data"):
+            st.subheader(weekly.get("label", "Résultat"))
+            st.markdown(weekly["data"])
+
+        driver_analysis = final.get("driver_analysis") or []
+        if driver_analysis:
+            st.subheader("Facteurs explicatifs")
+            for d in driver_analysis:
+                with st.expander(d["dimension"]):
+                    if "error" in d:
+                        st.error(d["error"])
+                    else:
+                        st.markdown(d["result"])
+
+        checks = final.get("validation_checks") or {}
+        if checks:
+            st.subheader("Validation")
+            for check_name, check in checks.items():
+                status = "OK" if check.get("passed") else "ÉCHEC"
+                st.write(f"- **{check_name}** : {status} — {check.get('result')}")
+
+        recommendations = final.get("recommendations") or []
+        if recommendations:
+            st.subheader("Recommandations")
+            for i, rec in enumerate(recommendations, 1):
+                st.markdown(f"**{i}. {rec.get('title', 'Sans titre')}**")
+                st.write(rec.get("description", ""))
+                st.caption(
+                    f"Impact : {rec.get('impact', 'N/A')} · "
+                    f"Faisabilité : {rec.get('feasibility', 'N/A')} · "
+                    f"Délai : {rec.get('timeline', 'N/A')}"
+                )
+
+    if st.button("Nouvelle analyse (agent)"):
+        del st.session_state["agent_run"]
+        st.rerun()
+
+
 # Charger les variables d'environnement (local via .env, cloud via st.secrets)
 load_dotenv()
 try:
@@ -349,6 +501,10 @@ st.session_state.setdefault("history", [])
 # Barre latérale (sidebar)
 with st.sidebar:
     st.header("Configuration")
+    analysis_mode = st.radio(
+        "Mode d'analyse",
+        ["Analyse simple (LLM en une passe)", "Agent complet (7 étapes, avec validation humaine)"],
+    )
     provider = st.selectbox(
         "Provider LLM",
         ["Groq (Llama 3.3 70B)", "OpenRouter (GPT-OSS 20B, gratuit)"],
@@ -392,11 +548,14 @@ with col1:
     )
 
     # Bouton de lancement
-    if st.button("Lancer l'analyse", type="primary", use_container_width=True):
+    is_agent_mode = analysis_mode.startswith("Agent complet")
+    button_label = "Lancer le cadrage et l'inspection" if is_agent_mode else "Lancer l'analyse"
+    trigger_key = "agent_trigger_inspect" if is_agent_mode else "analyze"
+    if st.button(button_label, type="primary", use_container_width=True):
         if not uploaded_files:
             st.warning("Veuillez téléverser au moins un fichier CSV.")
         else:
-            st.session_state["analyze"] = True
+            st.session_state[trigger_key] = True
 
 with col2:
     st.header("Résultats")
@@ -457,8 +616,14 @@ with col2:
         # qui ne correspond plus à ce qui est tapé à l'écran.
         current_source = (tuple(sorted((f.name, f.size) for f in uploaded_files)), provider, query)
 
+        if is_agent_mode:
+            if not cleaned_files:
+                st.error("Aucun fichier n'a pu être lu correctement, l'analyse ne peut pas être lancée.")
+            else:
+                render_agent_mode(cleaned_files, query, provider, current_source)
+
         # Si on a cliqué sur "Lancer l'analyse" (déclenchement à usage unique)
-        if st.session_state.get("analyze"):
+        elif st.session_state.get("analyze"):
             st.session_state["analyze"] = False
             if not cleaned_files:
                 st.error("Aucun fichier n'a pu être lu correctement, l'analyse ne peut pas être lancée.")
@@ -549,7 +714,7 @@ with col2:
         # Affichage du dernier résultat — indépendant du déclencheur ci-dessus,
         # pour que les boutons de téléchargement (qui provoquent un rerun) ne le fassent pas disparaître
         last_result = st.session_state.get("last_result")
-        if last_result and last_result.get("source") == current_source:
+        if not is_agent_mode and last_result and last_result.get("source") == current_source:
             st.subheader("Analyse de l'IA")
             st.markdown(last_result["answer"])
 
