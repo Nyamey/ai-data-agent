@@ -130,6 +130,28 @@ def test_load_data_does_not_leak_data_via_malicious_column_name(tmp_path):
     assert meta["null_counts"] == {}
 
 
+def test_load_data_does_not_leak_data_via_malicious_file_path(tmp_path):
+    # Deuxième vecteur trouvé en revue de sécurité, distinct du précédent :
+    # le CHEMIN du fichier lui-même (pas son contenu) était interpolé brut
+    # dans `read_csv_auto('{chemin}')`. Un chemin comme celui-ci sort du
+    # littéral SQL et permettait de lire une autre table DuckDB -- confirmé
+    # exploitable par test manuel avant le passage à un paramètre lié (`?`).
+    # Le mode agent Streamlit assainit déjà ce chemin en amont (voir
+    # agent_ui._write_session_csv), mais le pipeline de streaming ne le
+    # faisait pas -- ce test protège la fonction partagée par les deux.
+    db_path = str(tmp_path / "analytics.duckdb")
+    con = duckdb.connect(db_path)
+    con.execute("CREATE TABLE secrets AS SELECT 'FUITE_DE_DONNEES' as flag")
+    con.close()
+
+    real_csv = tmp_path / "normal.csv"
+    real_csv.write_text("a,b\n1,2\n3,4\n")
+    malicious_path = f"{real_csv}') UNION SELECT flag FROM secrets --"
+
+    with pytest.raises(Exception, match="No files found|IO Error"):
+        load_data(malicious_path, db_path=db_path)
+
+
 def test_build_and_validate_nodes_survive_malicious_column_name(tmp_path):
     from agent.nodes.build import build_node
     from agent.nodes.validate import validate_node

@@ -47,10 +47,19 @@ class StreamingAnalysisPipeline:
         Path(watch_dir).mkdir(parents=True, exist_ok=True)
 
     def _row_count(self, file_path: str) -> int:
-        """Compte les lignes du fichier sans le charger entièrement en mémoire."""
+        """Compte les lignes du fichier sans le charger entièrement en mémoire.
+
+        `file_path` vient tel quel du nom du fichier déposé dans le dossier
+        surveillé -- une donnée non fiable, contrairement au mode agent
+        Streamlit où ce chemin est déjà assaini. Passé en paramètre lié
+        (`?`) plutôt qu'interpolé dans le SQL pour ne pas pouvoir sortir du
+        littéral (ex. un nom de fichier contenant une apostrophe) et
+        injecter du SQL arbitraire -- confirmé exploitable par test manuel
+        avant ce correctif.
+        """
         con = duckdb.connect(":memory:")
         try:
-            return con.execute(f"SELECT COUNT(*) FROM read_csv_auto('{file_path}')").fetchone()[0]
+            return con.execute("SELECT COUNT(*) FROM read_csv_auto(?)", [file_path]).fetchone()[0]
         finally:
             con.close()
 

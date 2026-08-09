@@ -6,6 +6,8 @@
 # d'une analyse (couvert par tests/test_nodes_pipeline.py).
 from pathlib import Path
 
+import pytest
+
 import agent.graph
 from agent.state import AnalysisStatus
 from agent.streaming.pipeline import StreamingAnalysisPipeline
@@ -166,6 +168,22 @@ def _fake_deliverable(tmp_path, name):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("contenu factice")
     return str(path)
+
+
+def test_row_count_does_not_execute_injected_sql_via_file_path(tmp_path):
+    # Le nom du fichier déposé dans le dossier surveillé n'est pas assaini
+    # (contrairement au mode agent Streamlit) : un chemin contenant une
+    # apostrophe sortait du littéral SQL de read_csv_auto() et pouvait
+    # renvoyer une valeur arbitraire (faussant la décision de l'AnomalyDetector)
+    # au lieu du vrai nombre de lignes -- confirmé exploitable par test
+    # manuel avant le passage à un paramètre lié (`?`).
+    real_csv = tmp_path / "normal.csv"
+    real_csv.write_text("a,b\n1,2\n3,4\n")
+    malicious_path = f"{real_csv}') UNION SELECT 999999999 --"
+
+    pipeline = _pipeline(tmp_path)
+    with pytest.raises(Exception, match="No files found|IO Error"):
+        pipeline._row_count(malicious_path)
 
 
 def test_report_deliverables_is_a_noop_without_excel_or_pptx(tmp_path):

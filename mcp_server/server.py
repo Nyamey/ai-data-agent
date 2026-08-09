@@ -11,6 +11,8 @@ from mcp.server.mcpserver import MCPServer
 import duckdb
 from dotenv import load_dotenv
 
+from agent.tools.data_loader import quote_ident
+
 load_dotenv()
 
 # Initialiser le serveur MCP
@@ -93,14 +95,20 @@ def load_csv(file_path: str, table_name: str = None) -> str:
         Message de confirmation avec le nombre de lignes chargées
     """
     table_name = table_name or Path(file_path).stem.replace("-", "_").replace(".", "_")
+    table_ref = quote_ident(table_name)
     con = get_connection()
     try:
-        con.execute(f"""
-            CREATE OR REPLACE TABLE {table_name} AS
-            SELECT * FROM read_csv_auto('{file_path}', header=true)
-        """)
-        count = con.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
-        cols = con.execute(f"DESCRIBE {table_name}").fetchall()
+        # file_path en paramètre lié (pas interpolé) : un chemin contenant
+        # une apostrophe casserait sinon hors du littéral SQL et pourrait
+        # injecter des instructions arbitraires -- même défaut que celui
+        # trouvé et corrigé dans agent/tools/data_loader.py et
+        # agent/streaming/pipeline.py.
+        con.execute(
+            f"CREATE OR REPLACE TABLE {table_ref} AS SELECT * FROM read_csv_auto(?, header=true)",
+            [file_path],
+        )
+        count = con.execute(f"SELECT COUNT(*) FROM {table_ref}").fetchone()[0]
+        cols = con.execute(f"DESCRIBE {table_ref}").fetchall()
         return f"Table '{table_name}' chargée : {count} lignes, {len(cols)} colonnes"
     finally:
         con.close()
@@ -116,7 +124,7 @@ def get_schema(table_name: str) -> str:
     """
     con = get_connection()
     try:
-        schema = con.execute(f"DESCRIBE {table_name}").fetchdf()
+        schema = con.execute(f"DESCRIBE {quote_ident(table_name)}").fetchdf()
         return schema.to_markdown(index=False)
     finally:
         con.close()
@@ -130,23 +138,25 @@ def profile_table(table_name: str) -> str:
     Args:
         table_name: Nom de la table à profiler
     """
+    table_ref = quote_ident(table_name)
     con = get_connection()
     try:
-        total = con.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
+        total = con.execute(f"SELECT COUNT(*) FROM {table_ref}").fetchone()[0]
 
         dups = con.execute(f"""
             SELECT COUNT(*) FROM (
-                SELECT *, COUNT(*) as cnt FROM {table_name}
+                SELECT *, COUNT(*) as cnt FROM {table_ref}
                 GROUP BY ALL HAVING cnt > 1
             )
         """).fetchone()[0]
 
-        schema = con.execute(f"DESCRIBE {table_name}").fetchall()
+        schema = con.execute(f"DESCRIBE {table_ref}").fetchall()
         stats = []
 
         for col_name, col_type, *_ in schema:
+            col_ref = quote_ident(col_name)
             nulls = con.execute(
-                f"SELECT COUNT(*) FROM {table_name} WHERE {col_name} IS NULL"
+                f"SELECT COUNT(*) FROM {table_ref} WHERE {col_ref} IS NULL"
             ).fetchone()[0]
 
             stat = {"colonne": col_name, "type": col_type, "valeurs_manquantes": nulls}
@@ -154,9 +164,9 @@ def profile_table(table_name: str) -> str:
             # Statistiques numériques si applicable
             if any(t in col_type.upper() for t in ["INT", "DOUBLE", "FLOAT", "DECIMAL"]):
                 result = con.execute(f"""
-                    SELECT MIN({col_name}), MAX({col_name}), AVG({col_name}),
-                           MEDIAN({col_name}), STDDEV({col_name})
-                    FROM {table_name}
+                    SELECT MIN({col_ref}), MAX({col_ref}), AVG({col_ref}),
+                           MEDIAN({col_ref}), STDDEV({col_ref})
+                    FROM {table_ref}
                 """).fetchone()
                 stat.update({
                     "min": result[0], "max": result[1], "moyenne": result[2],

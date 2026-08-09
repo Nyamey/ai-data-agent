@@ -66,12 +66,22 @@ def _load_csv_into_table(con, csv_path: str) -> str:
     Factorisé hors de load_data()/load_joined_data() : les deux ont besoin
     de charger un ou plusieurs CSV de la même façon avant de calculer des
     métadonnées différentes (une seule table vs une jointure).
+
+    Le chemin passe en paramètre lié (`?`), pas interpolé dans le SQL : un
+    nom de fichier contenant une apostrophe (ex. `x') UNION SELECT secret
+    FROM autre_table --`) casserait sinon hors du littéral et injecterait du
+    SQL arbitraire -- confirmé par test manuel avant ce correctif, exactement
+    comme pour les noms de colonnes (voir quote_ident()). Dans le cas du mode
+    agent Streamlit ce chemin est déjà assaini en amont (voir
+    _write_session_csv), mais le pipeline de streaming (agent/streaming/
+    pipeline.py) transmet lui un nom de fichier brut, non fiable.
     """
     table_name = _table_name_from_path(csv_path)
-    con.execute(f"""
-        CREATE OR REPLACE TABLE {quote_ident(table_name)} AS
-        SELECT * FROM read_csv_auto('{csv_path}', header=true)
-    """)
+    con.execute(
+        f"CREATE OR REPLACE TABLE {quote_ident(table_name)} AS "
+        "SELECT * FROM read_csv_auto(?, header=true)",
+        [csv_path],
+    )
     return table_name
 
 
