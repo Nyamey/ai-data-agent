@@ -22,7 +22,7 @@ cp .env.example .env             # renseignez au moins une clé API
    ```
 
 2. Faites vos modifications avec des commits clairs et atomiques.
-3. Vérifiez que le projet démarre (`streamlit run app.py`, `python -m agent.main`).
+3. Vérifiez que le projet démarre (`streamlit run app.py`, `python -m agent.main`) et que la suite de tests passe (`python -m pytest tests/ -v`) ; la CI GitHub Actions la relance automatiquement sur la Pull Request.
 4. Poussez votre branche et ouvrez une **Pull Request** vers `main`.
 5. Décrivez le *pourquoi* de votre changement, pas seulement le *quoi*.
 
@@ -35,12 +35,11 @@ cp .env.example .env             # renseignez au moins une clé API
 
 ## Idées de contributions
 
-La [roadmap du README](README.md#roadmap) liste les chantiers ouverts, notamment :
+Toutes les étapes de la [roadmap du README](README.md#roadmap) sont complétées. Pistes ouvertes pour la suite :
 
-- Rendre le calcul de la métrique agnostique au schéma des données.
-- Porter l'approbation human-in-the-loop dans l'interface Streamlit.
-- Découpler le pipeline de streaming de l'étape d'approbation bloquante et brancher `AnomalyDetector` sur la décision de déclenchement.
-- Ajouter une suite de tests et une intégration continue (GitHub Actions).
+- Couvrir les nœuds `framing`/`recommend` (qui appellent un LLM) par des tests automatisés, via un provider local/déterministe.
+- Analyse jointe entre plusieurs fichiers liés, au-delà des cycles indépendants actuels du mode agent multi-fichiers.
+- Export des livrables (Excel/PowerPoint) depuis le pipeline de streaming.
 
 ## Signaler un bug
 

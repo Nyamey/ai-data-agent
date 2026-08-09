@@ -55,9 +55,13 @@
   <text x="105" y="443" text-anchor="middle" class="lbl">7. Recommandations</text>
   <text x="105" y="461" text-anchor="middle" class="sub">impact · faisabilité</text>
 
-  <rect class="node term" x="230" y="415" width="150" height="60"/>
-  <text x="305" y="439" text-anchor="middle" class="lbl">Fin</text>
-  <text x="305" y="457" text-anchor="middle" class="sub">analyse terminée</text>
+  <rect class="node step" x="230" y="415" width="150" height="60"/>
+  <text x="305" y="443" text-anchor="middle" class="lbl">8. Export</text>
+  <text x="305" y="461" text-anchor="middle" class="sub">Excel · PowerPoint</text>
+
+  <rect class="node term" x="430" y="415" width="150" height="60"/>
+  <text x="505" y="439" text-anchor="middle" class="lbl">Fin</text>
+  <text x="505" y="457" text-anchor="middle" class="sub">analyse terminée</text>
 
   <!-- Edges row1 -->
   <path class="edge" d="M180,175 L228,175" marker-end="url(#arrow)"/>
@@ -76,8 +80,9 @@
   <path class="edge" d="M230,315 L182,315" marker-end="url(#arrow)"/>
   <!-- validate -> recommend -->
   <path class="edge" d="M105,345 L105,413" marker-end="url(#arrow)"/>
-  <!-- recommend -> fin -->
+  <!-- recommend -> export -> fin -->
   <path class="edge" d="M180,445 L228,445" marker-end="url(#arrow)"/>
+  <path class="edge" d="M380,445 L428,445" marker-end="url(#arrow)"/>
 
   <!-- Stack band -->
   <rect x="30" y="535" width="740" height="110" rx="12" fill="#f8fafc" stroke="#e2e8f0"/>
