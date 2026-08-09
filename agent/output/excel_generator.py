@@ -1,4 +1,5 @@
 # agent/output/excel_generator.py — Génération de classeurs Excel
+import re
 import openpyxl
 from openpyxl.chart import LineChart, BarChart, Reference
 from openpyxl.styles import Font, PatternFill, Alignment
@@ -9,22 +10,36 @@ import pandas as pd
 class ExcelGenerator:
     """
     Génère un classeur Excel avec analyses et graphiques.
-    
+
     Onglets générés :
-    1. Rétention hebdomadaire
-    2. Analyse de cohorte
-    3. Analyse des facteurs
+    1. Métrique construite (ex. rétention hebdomadaire)
+    2. Analyse de cohorte (si utilisée)
+    3. Analyse des facteurs -- un onglet par dimension testée
     4. Validation
     """
-    
+
     def __init__(self):
         self.wb = openpyxl.Workbook()
         # Style des en-têtes
         self.header_font = Font(bold=True, color="FFFFFF", size=12)
         self.header_fill = PatternFill(start_color="2F5496", end_color="2F5496")
-    
+        self._used_titles = set()
+
+    def _unique_sheet_title(self, title: str) -> str:
+        """Rend un titre compatible avec les contraintes Excel (31 car., unique)."""
+        base = re.sub(r"[:\\/?*\[\]]", "_", title)[:31] or "Feuille"
+        candidate = base
+        i = 2
+        while candidate in self._used_titles:
+            suffix = f"_{i}"
+            candidate = base[: 31 - len(suffix)] + suffix
+            i += 1
+        self._used_titles.add(candidate)
+        return candidate
+
     def _add_sheet_with_data(self, title: str, df: pd.DataFrame, chart_type: str = None):
         """Ajoute une feuille avec des données et optionnellement un graphique."""
+        title = self._unique_sheet_title(title)
         ws = self.wb.create_sheet(title=title)
         
         # Ajouter les données
@@ -61,21 +76,21 @@ class ExcelGenerator:
             chart.set_categories(cats)
             ws.add_chart(chart, f"A{ws.max_row + 3}")
     
-    def add_weekly_retention(self, df: pd.DataFrame):
-        """Ajoute l'onglet rétention hebdomadaire."""
-        self._add_sheet_with_data("Rétention Hebdo", df, chart_type="line")
-    
+    def add_weekly_retention(self, df: pd.DataFrame, title: str = "Rétention Hebdo"):
+        """Ajoute l'onglet de métrique construite (rétention hebdomadaire ou équivalent générique)."""
+        self._add_sheet_with_data(title, df, chart_type="line")
+
     def add_cohort_analysis(self, df: pd.DataFrame):
         """Ajoute l'onglet analyse de cohorte."""
         self._add_sheet_with_data("Analyse Cohorte", df, chart_type="line")
-    
-    def add_driver_analysis(self, df: pd.DataFrame):
-        """Ajoute l'onglet analyse des facteurs."""
-        self._add_sheet_with_data("Analyse Facteurs", df, chart_type="bar")
+
+    def add_driver_analysis(self, df: pd.DataFrame, title: str = "Analyse Facteurs"):
+        """Ajoute un onglet d'analyse de facteur (appelable plusieurs fois, un par dimension)."""
+        self._add_sheet_with_data(title, df, chart_type="bar")
     
     def add_validation_checks(self, checks: dict):
         """Ajoute l'onglet validation."""
-        ws = self.wb.create_sheet(title="Validation")
+        ws = self.wb.create_sheet(title=self._unique_sheet_title("Validation"))
         ws.append(["Contrôle", "Résultat", "Statut"])
         
         for cell in ws[1]:

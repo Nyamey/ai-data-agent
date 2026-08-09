@@ -77,11 +77,12 @@ class PresentationGenerator:
         validation: dict,
         recommendations: list[dict],
         output_path: str,
+        title: str = "Rapport d'analyse",
     ) -> str:
         """Génère la présentation complète de 6 slides."""
-        
+
         # Slide 1 : Titre
-        self._add_title_slide("Analyse de Rétention Client", problem)
+        self._add_title_slide(title, problem)
         
         # Slide 2 : Résultats clés
         self._add_findings_slide("Résultats Clés", findings)

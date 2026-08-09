@@ -11,6 +11,7 @@ from agent.nodes.build import build_node
 from agent.nodes.test import test_node
 from agent.nodes.validate import validate_node
 from agent.nodes.recommend import recommend_node
+from agent.nodes.export import export_node
 
 
 def build_agent_graph(checkpoint_path: str = "./data/agent_memory.db"):
@@ -18,7 +19,7 @@ def build_agent_graph(checkpoint_path: str = "./data/agent_memory.db"):
     Construit et compile le graphe de l'agent.
 
     Le graphe suit ce flux :
-    Cadrage → Inspection → [Approbation] → Construction → Test → Validation → Recommandations
+    Cadrage → Inspection → [Approbation] → Construction → Test → Validation → Recommandations → Export
 
     Le graphe s'interrompt réellement avant le nœud "approval" (via
     `interrupt_before`, mécanisme natif LangGraph) plutôt que de bloquer sur
@@ -42,16 +43,18 @@ def build_agent_graph(checkpoint_path: str = "./data/agent_memory.db"):
     workflow.add_node("test", test_node)
     workflow.add_node("validate", validate_node)
     workflow.add_node("recommend", recommend_node)
-    
+    workflow.add_node("export", export_node)
+
     # Point d'entrée
     workflow.set_entry_point("framing")
-    
+
     # Arêtes fixes (transitions directes)
     workflow.add_edge("framing", "inspection")
     workflow.add_edge("build", "test")
     workflow.add_edge("test", "validate")
     workflow.add_edge("validate", "recommend")
-    workflow.add_edge("recommend", END)
+    workflow.add_edge("recommend", "export")
+    workflow.add_edge("export", END)
     
     # Arête conditionnelle après l'inspection :
     # si on attend l'approbation → aller au point de contrôle

@@ -1,8 +1,16 @@
 # agent/main.py — Point d'entrée de l'agent
+import sys
 import uuid
 from agent.graph import build_agent_graph
 from agent.state import AgentState
 from agent.nodes.approval import format_inspection_summary
+
+# Le LLM peut renvoyer des caractères absents de la page de code par défaut
+# de la console Windows (ex. espace fine insécable dans "100 000"), ce qui
+# fait planter print() avec un UnicodeEncodeError. Forcer l'UTF-8 en sortie
+# règle le problème sur toutes les plateformes.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 
 def _print_progress(event: dict):

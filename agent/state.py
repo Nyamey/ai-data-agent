@@ -14,6 +14,7 @@ class AnalysisStatus(str, Enum):
     TESTING = "test"
     VALIDATING = "validation"
     RECOMMENDING = "recommandations"
+    EXPORTING = "export"
     COMPLETED = "termine"
     FAILED = "echec"
 
