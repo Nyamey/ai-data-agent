@@ -34,8 +34,8 @@ La plupart des outils « text-to-SQL » sautent directement à la requête et pr
 - **Pipeline de streaming** : surveillance d'un dossier (watchdog) qui déclenche une analyse à l'arrivée d'un nouveau fichier, mais uniquement quand le détecteur d'anomalies par z-score (`AnomalyDetector`) juge la volumétrie anormale (ou, au tout début, tant qu'il n'a pas assez d'historique pour juger) — pas à chaque fichier reçu. Deux modes explicites : approbation automatique (`require_approval=False`, par défaut) ou mise en attente explicite (`require_approval=True`, avec `pipeline.approve(thread_id)` / `.reject(thread_id)`). Les livrables Excel/PowerPoint de chaque analyse terminée sont copiés dans `./outputs/stream/` sous un nom dérivé du fichier source.
 - **Serveur MCP DuckDB** : expose la base analytique aux assistants IA compatibles MCP.
 - **Interface Streamlit** : deux modes sélectionnables. « Analyse simple » (upload jusqu'à 5 fichiers CSV, nettoyage automatique, analyse LLM en une passe, export Markdown / CSV / Excel / PowerPoint) et « Agent complet » (le workflow LangGraph en 8 étapes ci-dessus, avec un onglet indépendant par fichier téléversé — cadrage, inspection, validation humaine et livrables propres à chacun). Chaque session Streamlit utilise ses propres fichiers DuckDB/checkpoint pour ne pas interférer avec les autres utilisateurs d'un déploiement partagé.
-- **Multi-provider LLM avec fallback** : Groq, Gemini, OpenRouter, Mistral via LiteLLM. L'agent CLI bascule automatiquement vers OpenRouter (modèle gratuit) si le provider principal échoue, en essayant plusieurs modèles gratuits en cascade si l'un est rate-limité ; Gemini n'est plus utilisé comme filet de secours car son accès via l'API Generative Language nécessite désormais une facturation activée sur de nombreux comptes. Dans l'app Streamlit, le choix Groq/OpenRouter est manuel (menu déroulant), avec la même cascade de repli.
-- **Sécurité** : neutralisation des injections de formule CSV/Excel (CWE-1236) sur les exports, lecture CSV robuste (encodage et séparateur devinés, colonnes lues en texte brut pour ne pas perdre les zéros non significatifs avant le nettoyage).
+- **Multi-provider LLM avec repli en cascade** : Groq, OpenRouter, Mistral essayés dans l'ordre (chacun avec sa propre clé, celle demandée en premier) ; Gemini reste utilisable si explicitement demandé mais exclu du repli automatique (accès payant sur de nombreux comptes désormais). Un quota épuisé ou une panne se traduit par un avertissement clair côté utilisateur (pas une trace d'erreur brute) tant qu'au moins un autre provider est configuré.
+- **Sécurité** : identifiants SQL (colonnes/tables) et chemins de fichiers systématiquement échappés/paramétrés avant toute requête DuckDB — ni le contenu ni le nom d'un CSV téléversé ne peuvent injecter du SQL (voir `agent/tools/data_loader.py`) ; neutralisation des injections de formule CSV/Excel (CWE-1236) sur tous les exports ; lecture CSV robuste (encodage et séparateur devinés, colonnes lues en texte brut pour ne pas perdre les zéros non significatifs avant le nettoyage).
 
 ---
 
@@ -195,9 +195,12 @@ ai-data-agent/
 │   ├── output/             # Générateurs Excel / PPTX + vérification de cohérence
 │   └── streaming/          # Surveillance de dossier + détection d'anomalies
 ├── mcp_server/             # Serveur MCP DuckDB
-├── app.py                  # Interface Streamlit
-├── app_utils.py            # Fonctions pures de app.py (nettoyage, exports, sécurité) -- testables sans Streamlit
-├── tests/                  # Suite pytest (voir ci-dessous)
+├── app.py                  # Interface Streamlit -- coquille de page (config, barre latérale, upload/nettoyage)
+├── agent_ui.py             # Mode « Agent complet » : jointure, cycle d'approbation, résultats
+├── simple_mode_ui.py       # Mode « Analyse simple » : cascade LLM, résultat, export
+├── ui_helpers.py           # Widgets d'affichage partagés entre les deux modes
+├── app_utils.py            # Fonctions pures (nettoyage, exports, sécurité) -- testables sans Streamlit
+├── tests/                  # Suite pytest (voir ci-dessous), dont streamlit_scripts/ pour les tests d'intégration
 ├── .github/workflows/      # Intégration continue (GitHub Actions)
 ├── docs/                   # Diagramme d'architecture (Mermaid + SVG) et capture d'écran
 ├── data/
@@ -217,9 +220,9 @@ pip install -r requirements.txt
 python -m pytest tests/ -v
 ```
 
-La suite couvre le nettoyage/export de données (`app_utils.py`), le chargement DuckDB et la détection de schéma (fichier seul et jointure multi-fichiers), l'extraction de JSON depuis une réponse LLM imparfaite, tous les nœuds de l'agent — y compris `framing` et `recommend` (qui appellent un LLM), le test de significativité chi² et le repli entre providers LLM — la décision de déclenchement du pipeline de streaming et l'organisation de ses livrables (avec un faux graphe, sans appel réseau), le générateur Excel et la vérification de cohérence Excel/PowerPoint.
+La suite couvre le nettoyage/export de données (`app_utils.py`), le chargement DuckDB et la détection de schéma (fichier seul et jointure multi-fichiers, y compris les régressions de sécurité SQL décrites ci-dessus), l'extraction de JSON depuis une réponse LLM imparfaite, tous les nœuds de l'agent — y compris `framing` et `recommend` (qui appellent un LLM), le test de significativité chi² et le repli entre providers LLM — la décision de déclenchement du pipeline de streaming et l'organisation de ses livrables, le générateur Excel et la vérification de cohérence Excel/PowerPoint.
 
-Pour `framing`/`recommend`, seul l'appel réseau est simulé (`litellm.completion`, avec des réponses représentatives d'un vrai modèle — JSON dans un bloc ```json, ou texte libre sans JSON) : `get_llm_response()`, l'extraction JSON et la logique des nœuds tournent pour de vrai, sans dépendre d'un provider externe ni de sa disponibilité du jour. Une intégration continue (GitHub Actions, [`.github/workflows/tests.yml`](.github/workflows/tests.yml)) exécute cette suite sur Python 3.11 et 3.12 à chaque push/PR sur `main`, sans clé API requise.
+Pour `framing`/`recommend`, seul l'appel réseau est simulé (`litellm.completion`, avec des réponses représentatives d'un vrai modèle — JSON dans un bloc ```json, ou texte libre sans JSON) : `get_llm_response()`, l'extraction JSON et la logique des nœuds tournent pour de vrai, sans dépendre d'un provider externe ni de sa disponibilité du jour. Le même principe s'applique aux tests d'intégration de l'interface (`tests/test_app_integration.py`) : ils pilotent réellement les widgets Streamlit (radio, sélecteurs, clics) via `AppTest`, avec le graphe LangGraph remplacé par un faux graphe déterministe (`tests/streamlit_scripts/`), pour vérifier bout en bout l'inspection, l'isolation entre fichiers, la jointure et l'affichage d'un quota épuisé sans dépendre du réseau. Une intégration continue (GitHub Actions, [`.github/workflows/tests.yml`](.github/workflows/tests.yml)) exécute cette suite sur Python 3.11 et 3.12 à chaque push/PR sur `main`, sans clé API requise.
 
 ---
 

@@ -35,11 +35,11 @@ cp .env.example .env             # renseignez au moins une clé API
 
 ## Idées de contributions
 
-Toutes les étapes de la [roadmap du README](README.md#roadmap) sont complétées. Pistes ouvertes pour la suite :
+Toutes les étapes de la [roadmap du README](README.md#roadmap) sont complétées, y compris la couverture de tests des nœuds LLM, l'analyse croisée multi-fichiers, l'export des livrables du streaming et les tests d'intégration Streamlit. Pistes ouvertes pour la suite :
 
-- Couvrir les nœuds `framing`/`recommend` (qui appellent un LLM) par des tests automatisés, via un provider local/déterministe.
-- Analyse jointe entre plusieurs fichiers liés, au-delà des cycles indépendants actuels du mode agent multi-fichiers.
-- Export des livrables (Excel/PowerPoint) depuis le pipeline de streaming.
+- Détection automatique des colonnes de jointure candidates (suggestion, pas décision automatique) pour accélérer la configuration en mode jointure.
+- Étendre l'analyse croisée au-delà d'un arbre de jointure simple (ex. agrégations pré-jointure par fichier).
+- Faire suivre les livrables Excel/PowerPoint du pipeline de streaming vers une destination externe (email, stockage cloud) plutôt que le seul dossier local `./outputs/stream/`.
 
 ## Signaler un bug
 
