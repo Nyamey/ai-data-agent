@@ -107,10 +107,10 @@ Copiez `.env.example` en `.env` et renseignez au moins une clé API :
 GROQ_API_KEY=gsk_votre_cle_ici
 GOOGLE_API_KEY=votre_cle_ici
 OPENROUTER_API_KEY=sk-or_votre_cle_ici
+MISTRAL_API_KEY=votre_cle_ici
 
 DEFAULT_LLM_PROVIDER=groq
-DEFAULT_LLM_MODEL=llama-3.3-70b-versatile
-OUTPUT_LANGUAGE=fr
+DUCKDB_PATH=./data/analytics.duckdb
 ```
 
 ---

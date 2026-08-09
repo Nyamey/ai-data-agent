@@ -6,15 +6,15 @@ from pptx.dml.color import RGBColor
 
 class PresentationGenerator:
     """
-    Génère une présentation de maximum 6 slides.
-    
+    Génère une présentation de 6 slides à partir des résultats de l'agent.
+
     Slides :
     1. Titre et problème
     2. Résultats clés
-    3. Analyse de cohorte (avec graphique)
-    4. Validation
-    5. Recommandations
-    6. Résumé
+    3. Validation
+    4. Recommandations (résumé)
+    5. Détail des recommandations
+    6. Remerciement
     """
     
     def __init__(self):

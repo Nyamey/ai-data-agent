@@ -59,7 +59,6 @@ class AgentState(BaseModel):
     
     # --- Résultats de construction ---
     weekly_retention: Optional[dict] = None
-    cohort_analysis: Optional[dict] = None
     
     # --- Résultats des tests ---
     driver_analysis: Optional[list[dict]] = None

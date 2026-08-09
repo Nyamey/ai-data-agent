@@ -59,7 +59,7 @@ def render_date_range(date_range_by_column: dict):
 
 def render_agent_mode(cleaned_files: list, query: str, provider: str, current_source: tuple):
     """
-    Pilote le workflow agent en 7 étapes (agent/graph.py) depuis l'UI, un
+    Pilote le workflow agent en 8 étapes (agent/graph.py) depuis l'UI, un
     onglet par fichier téléversé.
 
     Le graphe LangGraph attend un `data_path` unique : il n'y a pas
@@ -304,7 +304,7 @@ with st.sidebar:
     st.header("Configuration")
     analysis_mode = st.radio(
         "Mode d'analyse",
-        ["Analyse simple (LLM en une passe)", "Agent complet (7 étapes, avec validation humaine)"],
+        ["Analyse simple (LLM en une passe)", "Agent complet (8 étapes, avec validation humaine)"],
     )
     provider = st.selectbox(
         "Provider LLM",
