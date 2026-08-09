@@ -194,14 +194,31 @@ def load_joined_data(csv_paths: list[str], join_spec: dict, db_path: str = None)
     colonne "date" ou "id") -- la détection de colonne identifiant/date en
     aval fonctionne aussi bien sur ces noms préfixés.
 
+    Comme il n'y a pas de détection automatique de clé, rien ne garantit que
+    les colonnes choisies par l'utilisateur se correspondent réellement --
+    joindre sur des colonnes sans rapport produit silencieusement une table
+    vide (aucune valeur en commun) ou, à l'inverse, une explosion du nombre
+    de lignes (colonne choisie non unique). Ces deux cas sont détectés après
+    coup en comparant le nombre de lignes obtenu à celui de chaque fichier
+    source, et exposés via metadata["join_warning"] (None si rien d'anormal)
+    -- affiché dans le résumé d'approbation et dans l'interface Streamlit
+    pour que l'utilisateur puisse corriger sa configuration avant de
+    poursuivre une analyse qui ne veut rien dire.
+
     Returns:
-        Même forme que load_data(), plus "source_files" (chemins d'origine).
+        Même forme que load_data(), plus "source_files" (chemins d'origine),
+        "source_row_counts" (nombre de lignes de chaque fichier avant
+        jointure) et "join_warning" (message si le résultat semble anormal).
     """
     db_path = db_path or os.getenv("DUCKDB_PATH", "./data/analytics.duckdb")
     Path(db_path).parent.mkdir(parents=True, exist_ok=True)
     con = duckdb.connect(db_path)
 
     table_by_path = {path: _load_csv_into_table(con, path) for path in csv_paths}
+    source_row_counts = {
+        path: con.execute(f"SELECT COUNT(*) FROM {quote_ident(table)}").fetchone()[0]
+        for path, table in table_by_path.items()
+    }
 
     root_path = join_spec["root"]
     if root_path not in table_by_path:
@@ -249,8 +266,41 @@ def load_joined_data(csv_paths: list[str], join_spec: dict, db_path: str = None)
         "table_name": joined_table,
         "db_path": db_path,
         "source_files": csv_paths,
+        "source_row_counts": source_row_counts,
+        "join_warning": _diagnose_join(metadata["row_count"], source_row_counts),
         **metadata,
     }
+
+
+def _diagnose_join(row_count: int, source_row_counts: dict) -> str | None:
+    """Détecte une jointure qui a probablement échoué (aucune vraie clé commune).
+
+    Deux symptômes couvrent la grande majorité des configurations
+    incorrectes, sans avoir besoin de connaître les vraies clés :
+    - 0 ligne en sortie : aucune valeur en commun entre les colonnes choisies.
+    - Beaucoup plus de lignes qu'aucun fichier source : la colonne choisie
+      n'est pas unique côté "on_column", chaque correspondance se multiplie
+      (produit cartésien partiel).
+    """
+    if not source_row_counts:
+        return None
+    max_source = max(source_row_counts.values())
+
+    if row_count == 0:
+        return (
+            "La jointure ne produit aucune ligne : les colonnes choisies ne "
+            "semblent avoir aucune valeur en commun entre les fichiers. "
+            "Vérifiez qu'il s'agit bien d'une clé partagée (ex. un même "
+            "identifiant client), pas de deux colonnes sans rapport."
+        )
+    if max_source > 0 and row_count > 3 * max_source:
+        return (
+            f"La jointure produit beaucoup plus de lignes ({row_count}) que le "
+            f"plus grand fichier source ({max_source}) : la colonne choisie "
+            "n'est probablement pas unique, ce qui multiplie les correspondances "
+            "au lieu de les croiser proprement."
+        )
+    return None
 
 
 def fetch_dataframe(sql: str, db_path: str = None):

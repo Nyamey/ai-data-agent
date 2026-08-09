@@ -308,6 +308,17 @@ def _render_single_agent_run(run_key: str, current_source: tuple, runs: dict):
     i2.metric("Colonnes", len(meta.get("schema", [])))
     i3.metric("Doublons", meta.get("duplicate_count", "-"))
     st.write("**Colonne identifiant détectée :**", meta.get("id_column") or "Aucune")
+    if meta.get("source_row_counts"):
+        st.caption("Lignes par fichier avant jointure :")
+        st.dataframe(
+            pd.DataFrame(
+                {"Fichier": os.path.basename(p), "Lignes": c}
+                for p, c in meta["source_row_counts"].items()
+            ),
+            use_container_width=True, hide_index=True,
+        )
+    if meta.get("join_warning"):
+        st.warning(meta["join_warning"])
     if meta.get("null_counts"):
         render_missing_values(meta["null_counts"])
     if meta.get("date_range"):

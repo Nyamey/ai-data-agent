@@ -24,6 +24,11 @@ def format_inspection_summary(state: AgentState) -> str:
             f"  - Valeurs manquantes : {meta['null_counts']}",
             f"  - Plage de dates : {meta['date_range']}",
         ]
+        # Présent uniquement en mode jointure (agent.tools.data_loader.load_joined_data) --
+        # signale une jointure qui a probablement échoué (mauvaises colonnes
+        # choisies) avant de gaspiller le reste de l'analyse dessus.
+        if meta.get("join_warning"):
+            lines.append(f"  - ATTENTION : {meta['join_warning']}")
     lines += [
         f"Agrégation nécessaire : {'Oui' if state.needs_aggregation else 'Non'}",
         f"Hypothèses : {state.assumptions}",

@@ -4,6 +4,7 @@ import pandas as pd
 import pytest
 
 from agent.tools.data_loader import (
+    _diagnose_join,
     detect_id_column,
     execute_query,
     fetch_dataframe,
@@ -323,3 +324,59 @@ def test_load_joined_data_supports_five_files(tmp_path):
     columns = {s["column_name"] for s in meta["schema"]}
     for i in range(1, 5):
         assert f"f{i}__valeur_{i}" in columns
+
+
+# --- Diagnostic post-jointure : détecte une jointure sur de mauvaises colonnes ---
+
+def test_diagnose_join_flags_empty_result():
+    warning = _diagnose_join(0, {"a.csv": 20, "b.csv": 15})
+    assert warning is not None
+    assert "aucune ligne" in warning
+
+
+def test_diagnose_join_flags_cartesian_explosion():
+    warning = _diagnose_join(500, {"a.csv": 20, "b.csv": 15})
+    assert warning is not None
+    assert "plus de lignes" in warning
+
+
+def test_diagnose_join_silent_on_healthy_join():
+    assert _diagnose_join(18, {"a.csv": 20, "b.csv": 15}) is None
+
+
+def test_diagnose_join_silent_when_no_sources():
+    assert _diagnose_join(0, {}) is None
+
+
+def test_load_joined_data_warns_when_files_are_unrelated(tmp_path):
+    # Reproduit le rapport utilisateur : 3 fichiers sans aucun rapport entre
+    # eux, joints sur les colonnes par défaut (première colonne de chacun) --
+    # la jointure ne doit pas échouer silencieusement.
+    meteo = pd.DataFrame({"ville": ["Paris", "Lyon", "Marseille"] * 5, "temperature": range(15)})
+    films = pd.DataFrame({"titre": [f"Film{i}" for i in range(10)], "genre": ["Action"] * 10})
+
+    meteo_path, films_path = tmp_path / "meteo.csv", tmp_path / "films.csv"
+    meteo.to_csv(meteo_path, index=False)
+    films.to_csv(films_path, index=False)
+
+    spec = {
+        "root": str(meteo_path),
+        "joins": [{"file": str(films_path), "on_file": str(meteo_path),
+                   "file_column": "titre", "on_column": "ville", "how": "inner"}],
+    }
+    meta = load_joined_data([str(meteo_path), str(films_path)], spec, db_path=str(tmp_path / "analytics.duckdb"))
+
+    assert meta["row_count"] == 0
+    assert meta["source_row_counts"] == {str(meteo_path): 15, str(films_path): 10}
+    assert meta["join_warning"] is not None
+    assert "aucune ligne" in meta["join_warning"]
+
+
+def test_load_joined_data_no_warning_on_legitimate_join(sample_joinable_csvs, tmp_path):
+    paths = sample_joinable_csvs
+    meta = load_joined_data(
+        [paths["commandes"], paths["clients"], paths["produits"]],
+        _three_way_join_spec(paths),
+        db_path=str(tmp_path / "analytics.duckdb"),
+    )
+    assert meta["join_warning"] is None
