@@ -1,5 +1,6 @@
 # agent/graph.py — Assemblage du graphe LangGraph
 import sqlite3
+from pathlib import Path
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.sqlite import SqliteSaver
 from agent.state import AgentState, AnalysisStatus
@@ -12,14 +13,24 @@ from agent.nodes.validate import validate_node
 from agent.nodes.recommend import recommend_node
 
 
-def build_agent_graph():
+def build_agent_graph(checkpoint_path: str = "./data/agent_memory.db"):
     """
     Construit et compile le graphe de l'agent.
-    
+
     Le graphe suit ce flux :
     Cadrage → Inspection → [Approbation] → Construction → Test → Validation → Recommandations
-    
-    Après l'inspection, l'agent s'arrête pour demander l'approbation.
+
+    Le graphe s'interrompt réellement avant le nœud "approval" (via
+    `interrupt_before`, mécanisme natif LangGraph) plutôt que de bloquer sur
+    un `input()` dans le nœud lui-même -- ce qui permet de reprendre
+    l'exécution depuis n'importe quel appelant (CLI interactif, UI web...),
+    chacun décidant comment recueillir l'approbation avant d'appeler
+    `update_state` puis de reprendre le stream.
+
+    Args:
+        checkpoint_path: Fichier SQLite de checkpoint. Utiliser un chemin
+            distinct par session/utilisateur pour isoler les exécutions
+            concurrentes (ex. plusieurs sessions Streamlit).
     """
     workflow = StateGraph(AgentState)
     
@@ -37,7 +48,6 @@ def build_agent_graph():
     
     # Arêtes fixes (transitions directes)
     workflow.add_edge("framing", "inspection")
-    workflow.add_edge("approval", "build")
     workflow.add_edge("build", "test")
     workflow.add_edge("test", "validate")
     workflow.add_edge("validate", "recommend")
@@ -66,7 +76,8 @@ def build_agent_graph():
     )
     
     # Compiler avec persistance SQLite (sauvegarde de l'état)
-    conn = sqlite3.connect("./data/agent_memory.db", check_same_thread=False)
+    Path(checkpoint_path).parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(checkpoint_path, check_same_thread=False)
     memory = SqliteSaver(conn)
-    
-    return workflow.compile(checkpointer=memory)
+
+    return workflow.compile(checkpointer=memory, interrupt_before=["approval"])
