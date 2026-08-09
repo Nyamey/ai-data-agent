@@ -45,6 +45,9 @@ def build_node(state: AgentState) -> dict:
 
     return {
         "status": AnalysisStatus.TESTING,
-        "weekly_retention": {"data": result, "label": label},
+        # "query" est conservée pour que l'étape d'export puisse ré-exécuter
+        # le même calcul sous forme de DataFrame (execute_query ne renvoie
+        # que du markdown, impropre à la génération Excel/PPTX).
+        "weekly_retention": {"data": result, "label": label, "query": query},
         "audit_trail": state.audit_trail + [f"Construction : {label.lower()} calculée"],
     }

@@ -117,24 +117,41 @@ def load_data(csv_path: str, db_path: str = None) -> dict:
     }
 
 
-def execute_query(sql: str, db_path: str = None) -> str:
+def fetch_dataframe(sql: str, db_path: str = None):
     """
-    Exécute une requête SQL sur DuckDB et retourne le résultat en markdown.
-    
+    Exécute une requête SQL sur DuckDB et retourne un DataFrame brut.
+
+    Contrairement à execute_query() (pensé pour l'affichage/le LLM, qui
+    renvoie du markdown), cette fonction sert quand le résultat doit être
+    manipulé par du code -- tests statistiques, export Excel/PPTX...
+
     Args:
         sql: Requête SQL à exécuter
         db_path: Chemin vers la base DuckDB
-    
+
     Returns:
-        Résultat formaté en tableau markdown
+        pandas.DataFrame
     """
     db_path = db_path or os.getenv("DUCKDB_PATH", "./data/analytics.duckdb")
     con = duckdb.connect(db_path)
-    
     try:
-        df = con.execute(sql).fetchdf()
+        return con.execute(sql).fetchdf()
+    finally:
         con.close()
-        return df.to_markdown(index=False)
+
+
+def execute_query(sql: str, db_path: str = None) -> str:
+    """
+    Exécute une requête SQL sur DuckDB et retourne le résultat en markdown.
+
+    Args:
+        sql: Requête SQL à exécuter
+        db_path: Chemin vers la base DuckDB
+
+    Returns:
+        Résultat formaté en tableau markdown
+    """
+    try:
+        return fetch_dataframe(sql, db_path=db_path).to_markdown(index=False)
     except Exception as e:
-        con.close()
         return f"Erreur SQL: {e}"

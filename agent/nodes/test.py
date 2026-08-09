@@ -1,6 +1,7 @@
 # agent/nodes/test.py — Nœud 4 : Tests des facteurs explicatifs
+from scipy import stats as scipy_stats
 from agent.state import AgentState, AnalysisStatus
-from agent.tools.data_loader import execute_query
+from agent.tools.data_loader import fetch_dataframe
 
 
 def test_node(state: AgentState) -> dict:
@@ -11,6 +12,10 @@ def test_node(state: AgentState) -> dict:
     (ex. plateforme, région, segment...). Agnostique au schéma : les
     colonnes exclues (identifiant d'entité, dates) sont celles détectées
     par l'inspection, pas des noms fixes.
+
+    Pour chaque dimension, un test du chi² d'ajustement (H0 : répartition
+    uniforme entre catégories) évalue si l'écart observé est statistiquement
+    significatif (p < 0.05) ou relève du bruit d'échantillonnage.
     """
     state.status = AnalysisStatus.TESTING
 
@@ -27,6 +32,7 @@ def test_node(state: AgentState) -> dict:
 
     # Pour chaque colonne catégorielle, calculer la métrique par segment
     driver_results = []
+    statistical_tests = {}
 
     excluded = date_cols | ({id_col} if id_col else set())
     dimension_cols = [
@@ -35,20 +41,42 @@ def test_node(state: AgentState) -> dict:
     ]
 
     for col in dimension_cols[:6]:  # Limiter à 6 colonnes
+        query = f"""
+            SELECT {col}, {count_expr} as {count_label}
+            FROM {table}
+            GROUP BY {col}
+            ORDER BY {count_label} DESC
+        """
         try:
-            query = f"""
-                SELECT {col}, {count_expr} as {count_label}
-                FROM {table}
-                GROUP BY {col}
-                ORDER BY {count_label} DESC
-            """
-            result = execute_query(query, db_path=db_path)
-            driver_results.append({"dimension": col, "result": result})
+            df = fetch_dataframe(query, db_path=db_path)
+            entry = {"dimension": col, "result": df.to_markdown(index=False), "query": query}
+
+            # Test du chi² : il faut au moins 2 catégories et des effectifs
+            # non nuls pour que le test soit défini.
+            counts = df[count_label].dropna()
+            if len(counts) >= 2 and counts.sum() > 0:
+                chi2, p_value = scipy_stats.chisquare(counts.to_numpy())
+                significant = bool(p_value < 0.05)
+                stat = {
+                    "chi2": round(float(chi2), 3),
+                    "p_value": round(float(p_value), 4),
+                    "significant": significant,
+                    "n_categories": int(len(counts)),
+                }
+                entry.update(stat)
+                statistical_tests[col] = stat
+
+            driver_results.append(entry)
         except Exception as e:
             driver_results.append({"dimension": col, "error": str(e)})
 
+    n_significant = sum(1 for s in statistical_tests.values() if s["significant"])
     return {
         "status": AnalysisStatus.VALIDATING,
         "driver_analysis": driver_results,
-        "audit_trail": state.audit_trail + [f"Test : {len(driver_results)} dimensions analysées"],
+        "statistical_tests": statistical_tests,
+        "audit_trail": state.audit_trail + [
+            f"Test : {len(driver_results)} dimensions analysées, "
+            f"{n_significant} statistiquement significative(s) (p < 0.05)"
+        ],
     }
