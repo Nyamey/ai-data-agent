@@ -20,7 +20,7 @@ def inspection_node(state: AgentState) -> dict:
     state.status = AnalysisStatus.INSPECTION
     
     # Charger et inspecter les données avec DuckDB
-    metadata = load_data(state.data_path)
+    metadata = load_data(state.data_path, db_path=state.db_path)
     
     # Décider si une agrégation est nécessaire (si beaucoup de lignes)
     needs_agg = metadata["row_count"] > 10000

@@ -38,6 +38,7 @@ def framing_node(state: AgentState) -> dict:
     
     response = get_llm_response(
         messages=[{"role": "user", "content": prompt}],
+        provider=state.llm_provider,
         temperature=0.2,
     )
     
