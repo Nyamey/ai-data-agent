@@ -9,16 +9,9 @@ from datetime import datetime
 import streamlit as st
 from litellm import completion
 
+from agent.llm.config import DEFAULT_MODELS, OPENROUTER_FALLBACK_MODELS
 from app_utils import build_csv_export, build_excel_report, build_markdown_report, build_pptx_report
 from ui_helpers import render_llm_unavailable_warning
-
-# Modèles gratuits OpenRouter, essayés dans l'ordre si l'un est rate-limité
-# (pool partagé entre tous les utilisateurs OpenRouter, donc peu fiable seul)
-OPENROUTER_FREE_MODELS = [
-    "openrouter/openai/gpt-oss-20b:free",
-    "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
-    "openrouter/google/gemma-4-31b-it:free",
-]
 
 
 def render_simple_mode(cleaned_files: list, describe_list: list, query: str, provider: str, current_source: tuple):
@@ -59,12 +52,14 @@ def _run_simple_mode_analysis(
             """)
         data_summary = "\n".join(summaries)
 
-        # Choisir la liste de modèles à essayer selon le provider
+        # Choisir la liste de modèles à essayer selon le provider -- mêmes
+        # constantes que le mode agent (agent/llm/config.py), pour ne pas
+        # entretenir deux cascades de repli séparées qui pourraient diverger.
         if "Groq" in provider:
-            candidates = ["groq/llama-3.3-70b-versatile"]
+            candidates = [DEFAULT_MODELS["groq"]]
             api_key = os.getenv("GROQ_API_KEY")
         else:
-            candidates = OPENROUTER_FREE_MODELS
+            candidates = OPENROUTER_FALLBACK_MODELS
             api_key = os.getenv("OPENROUTER_API_KEY")
 
         prompt = f"""
