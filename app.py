@@ -363,15 +363,19 @@ def render_agent_mode(cleaned_files: list, query: str, provider: str, current_so
         checkpoint_path = os.path.join(session_dir, f"checkpoint_{thread_id}.db")
         db_path = os.path.join(session_dir, f"analytics_{thread_id}.duckdb")
 
-        with st.spinner("Cadrage et inspection en cours..."):
-            graph = build_agent_graph(checkpoint_path=checkpoint_path)
-            initial_state = AgentState(
-                query=query, data_path=csv_path, db_path=db_path, llm_provider=llm_provider,
-            )
-            config = {"configurable": {"thread_id": thread_id}}
-            for _ in graph.stream(initial_state, config=config, stream_mode="values"):
-                pass
-            snapshot = graph.get_state(config)
+        try:
+            with st.spinner("Cadrage et inspection en cours..."):
+                graph = build_agent_graph(checkpoint_path=checkpoint_path)
+                initial_state = AgentState(
+                    query=query, data_path=csv_path, db_path=db_path, llm_provider=llm_provider,
+                )
+                config = {"configurable": {"thread_id": thread_id}}
+                for _ in graph.stream(initial_state, config=config, stream_mode="values"):
+                    pass
+                snapshot = graph.get_state(config)
+        except Exception as e:
+            st.error(f"Le cadrage/l'inspection a échoué : {e}")
+            return
 
         st.session_state["agent_run"] = {
             "source": current_source,
@@ -421,13 +425,20 @@ def render_agent_mode(cleaned_files: list, query: str, provider: str, current_so
         reject = col_b.button("Rejeter", use_container_width=True, key="agent_reject")
 
         if approve or reject:
-            with st.spinner("Analyse en cours..."):
-                graph = build_agent_graph(checkpoint_path=run["checkpoint_path"])
-                config = {"configurable": {"thread_id": run["thread_id"]}}
-                graph.update_state(config, {"approval_received": approve})
-                final_event = {}
-                for event in graph.stream(None, config=config, stream_mode="values"):
-                    final_event = event
+            try:
+                with st.spinner("Analyse en cours..."):
+                    graph = build_agent_graph(checkpoint_path=run["checkpoint_path"])
+                    config = {"configurable": {"thread_id": run["thread_id"]}}
+                    graph.update_state(config, {"approval_received": approve})
+                    final_event = {}
+                    for event in graph.stream(None, config=config, stream_mode="values"):
+                        final_event = event
+            except Exception as e:
+                st.error(
+                    f"L'analyse a échoué (provider LLM temporairement indisponible ?) : {e}\n\n"
+                    "Réessaie en cliquant à nouveau sur Approuver/Rejeter."
+                )
+                return
             run["final_event"] = final_event
             st.session_state["agent_run"] = run
             st.rerun()

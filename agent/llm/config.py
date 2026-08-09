@@ -13,6 +13,14 @@ DEFAULT_MODELS = {
     "mistral": "mistral/mistral-large-latest",
 }
 
+# Modèles gratuits OpenRouter essayés en cascade si l'un est rate-limité
+# (pool partagé entre tous les utilisateurs OpenRouter, donc peu fiable seul)
+OPENROUTER_FALLBACK_MODELS = [
+    "openrouter/openai/gpt-oss-20b:free",
+    "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
+    "openrouter/google/gemma-4-31b-it:free",
+]
+
 
 def get_llm_response(
     messages: list[dict],
@@ -60,8 +68,28 @@ def get_llm_response(
         )
         return response.choices[0].message.content
     except Exception as e:
-        # Si le provider échoue, essayer OpenRouter comme fallback
-        if provider != "openrouter":
+        if provider == "openrouter":
+            # Déjà sur OpenRouter : le modèle gratuit demandé est rate-limité,
+            # on essaie les autres avant d'abandonner (un seul modèle gratuit
+            # tombe souvent en panne, sa charge étant partagée entre tous les
+            # utilisateurs OpenRouter -- cf. app.py qui fait la même cascade).
+            last_error = e
+            for fallback_model in OPENROUTER_FALLBACK_MODELS:
+                if fallback_model == model:
+                    continue
+                try:
+                    response = completion(
+                        model=fallback_model,
+                        messages=messages,
+                        api_key=api_keys.get("openrouter"),
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                    )
+                    return response.choices[0].message.content
+                except Exception as e2:
+                    last_error = e2
+                    continue
+            raise last_error
+        else:
             print(f"Provider {provider} échoué ({e}). Bascule vers OpenRouter...")
-            return get_llm_response(messages, provider="openrouter", temperature=temperature)
-        raise
+            return get_llm_response(messages, provider="openrouter", temperature=temperature, max_tokens=max_tokens)
