@@ -46,13 +46,72 @@ DEFAULT_MODELS = {
     "mistral": "mistral/mistral-large-latest",
 }
 
-# Modèles gratuits OpenRouter essayés en cascade si l'un est rate-limité
-# (pool partagé entre tous les utilisateurs OpenRouter, donc peu fiable seul)
+# Modèles gratuits OpenRouter essayés en cascade si l'un est rate-limité.
+# Ça aide contre une panne ou un rate-limit propre à UN modèle -- mais
+# OpenRouter applique aussi un plafond quotidien de requêtes gratuites au
+# niveau du COMPTE ("free-models-per-day"), partagé par tous les modèles
+# :free : une fois ce plafond atteint, les trois échouent identiquement et
+# aucune cascade de modèles n'y changera rien tant qu'il n'est pas
+# réinitialisé (ou des crédits ajoutés) -- d'où le repli vers un autre
+# provider ci-dessous, seul recours dans ce cas précis.
 OPENROUTER_FALLBACK_MODELS = [
     "openrouter/openai/gpt-oss-20b:free",
     "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
     "openrouter/google/gemma-4-31b-it:free",
 ]
+
+# Ordre d'essai des providers quand celui demandé échoue. Gemini est exclu
+# du repli automatique (accès payant sur de nombreux comptes désormais,
+# voir README) mais reste utilisable si explicitement demandé.
+PROVIDER_FALLBACK_ORDER = ["groq", "openrouter", "mistral"]
+
+
+class LLMUnavailableError(RuntimeError):
+    """Levée quand aucun provider LLM configuré n'a pu répondre.
+
+    Un message clair et déjà traduit ici évite qu'une exception litellm
+    brute (souvent un jargon HTTP/JSON illisible pour un utilisateur non
+    technique) ne remonte telle quelle jusqu'à l'interface Streamlit ou au
+    terminal -- les appelants n'ont qu'à afficher str(exception).
+    """
+
+
+def _api_key_for(provider: str) -> str | None:
+    return {
+        "groq": os.getenv("GROQ_API_KEY"),
+        "gemini": os.getenv("GOOGLE_API_KEY"),
+        "openrouter": os.getenv("OPENROUTER_API_KEY"),
+        "mistral": os.getenv("MISTRAL_API_KEY"),
+    }.get(provider)
+
+
+def _try_provider(provider: str, messages: list[dict], temperature: float, max_tokens: int):
+    """
+    Essaie un provider (avec sa propre cascade de modèles pour OpenRouter).
+
+    Returns:
+        (texte, None) en cas de succès.
+        (None, None) si le provider n'a pas de clé API configurée -- pas un
+        échec à proprement parler, juste une option indisponible.
+        (None, dernière_exception) si tous les modèles de ce provider ont échoué.
+    """
+    api_key = _api_key_for(provider)
+    if not api_key:
+        return None, None
+
+    models = OPENROUTER_FALLBACK_MODELS if provider == "openrouter" else [DEFAULT_MODELS[provider]]
+    last_error = None
+    for model in models:
+        try:
+            response = completion(
+                model=model, messages=messages, api_key=api_key,
+                temperature=temperature, max_tokens=max_tokens,
+            )
+            return response.choices[0].message.content, None
+        except Exception as e:
+            last_error = e
+            continue
+    return None, last_error
 
 
 def get_llm_response(
@@ -63,66 +122,61 @@ def get_llm_response(
     max_tokens: int = 4096,
 ) -> str:
     """
-    Obtient une réponse du LLM avec fallback automatique.
+    Obtient une réponse du LLM avec repli automatique vers un autre provider.
 
-    Si le provider principal échoue, on bascule vers OpenRouter (modèle
-    gratuit, sans compte de facturation requis -- contrairement à Gemini,
-    dont l'accès via l'API Generative Language nécessite désormais une
-    facturation activée sur de nombreux comptes).
-    
+    Si le provider demandé échoue (quota, panne...), on essaie les autres
+    providers configurés (ceux avec une clé API renseignée) dans l'ordre de
+    PROVIDER_FALLBACK_ORDER, avant d'abandonner.
+
     Args:
         messages: Liste de messages au format [{"role": "user", "content": "..."}]
         provider: Provider ("groq", "gemini", "openrouter", "mistral")
-        model: Modèle spécifique (optionnel)
+        model: Modèle spécifique à utiliser pour le provider demandé (optionnel) --
+            n'affecte pas les modèles utilisés par les providers de repli
         temperature: 0 = précis, 1 = créatif
         max_tokens: Longueur maximale de la réponse
-    
+
     Returns:
         La réponse texte du LLM
+
+    Raises:
+        LLMUnavailableError: si aucun provider configuré n'a pu répondre.
     """
-    provider = provider or os.getenv("DEFAULT_LLM_PROVIDER", "groq")
-    model = model or DEFAULT_MODELS.get(provider, DEFAULT_MODELS["groq"])
-    
-    # Récupérer la clé API correspondante
-    api_keys = {
-        "groq": os.getenv("GROQ_API_KEY"),
-        "gemini": os.getenv("GOOGLE_API_KEY"),
-        "openrouter": os.getenv("OPENROUTER_API_KEY"),
-        "mistral": os.getenv("MISTRAL_API_KEY"),
-    }
-    
-    try:
+    requested = provider or os.getenv("DEFAULT_LLM_PROVIDER", "groq")
+
+    if model:
+        # Modèle explicitement demandé : un seul essai sur ce provider précis,
+        # sans passer par _try_provider() (qui impose les modèles par défaut).
+        api_key = _api_key_for(requested)
         response = completion(
-            model=model,
-            messages=messages,
-            api_key=api_keys.get(provider),
-            temperature=temperature,
-            max_tokens=max_tokens,
+            model=model, messages=messages, api_key=api_key,
+            temperature=temperature, max_tokens=max_tokens,
         )
         return response.choices[0].message.content
-    except Exception as e:
-        if provider == "openrouter":
-            # Déjà sur OpenRouter : le modèle gratuit demandé est rate-limité,
-            # on essaie les autres avant d'abandonner (un seul modèle gratuit
-            # tombe souvent en panne, sa charge étant partagée entre tous les
-            # utilisateurs OpenRouter -- cf. app.py qui fait la même cascade).
-            last_error = e
-            for fallback_model in OPENROUTER_FALLBACK_MODELS:
-                if fallback_model == model:
-                    continue
-                try:
-                    response = completion(
-                        model=fallback_model,
-                        messages=messages,
-                        api_key=api_keys.get("openrouter"),
-                        temperature=temperature,
-                        max_tokens=max_tokens,
-                    )
-                    return response.choices[0].message.content
-                except Exception as e2:
-                    last_error = e2
-                    continue
-            raise last_error
-        else:
-            print(f"Provider {provider} échoué ({e}). Bascule vers OpenRouter...")
-            return get_llm_response(messages, provider="openrouter", temperature=temperature, max_tokens=max_tokens)
+
+    # Le provider demandé passe en premier, puis les autres providers
+    # configurés comme filet de secours, chacun une seule fois.
+    order = [requested] + [p for p in PROVIDER_FALLBACK_ORDER if p != requested]
+
+    errors = {}
+    for p in order:
+        text, error = _try_provider(p, messages, temperature, max_tokens)
+        if text is not None:
+            if p != requested:
+                print(f"Provider {requested} indisponible, bascule réussie vers {p}.")
+            return text
+        if error is not None:
+            errors[p] = error
+
+    if not errors:
+        raise LLMUnavailableError(
+            "Aucun provider LLM n'est configuré : renseignez au moins une clé API "
+            "(GROQ_API_KEY, OPENROUTER_API_KEY ou MISTRAL_API_KEY)."
+        )
+    detail = " ; ".join(f"{p} : {e}" for p, e in errors.items())
+    raise LLMUnavailableError(
+        "Tous les providers LLM configurés sont actuellement indisponibles "
+        "(quota journalier atteint ou panne temporaire). Réessayez plus tard, "
+        "ou configurez une clé pour un autre provider (Groq, OpenRouter, Mistral). "
+        f"Détail technique : {detail}"
+    )
