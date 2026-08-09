@@ -41,8 +41,8 @@ def start_watching(watch_dir: str, agent_callback):
     
     print(f"[STREAMING] Surveillance de {watch_dir} active...")
     print(f"  Extensions surveillées : {handler.watch_extensions}")
-    print(f"  Place un fichier CSV dans ce dossier pour déclencher une analyse.")
-    print(f"  Appuie sur Ctrl+C pour arrêter.")
+    print("  Place un fichier CSV dans ce dossier pour déclencher une analyse.")
+    print("  Appuie sur Ctrl+C pour arrêter.")
     
     try:
         while True:

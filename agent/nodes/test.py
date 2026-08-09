@@ -1,7 +1,7 @@
 # agent/nodes/test.py — Nœud 4 : Tests des facteurs explicatifs
 from scipy import stats as scipy_stats
 from agent.state import AgentState, AnalysisStatus
-from agent.tools.data_loader import fetch_dataframe
+from agent.tools.data_loader import fetch_dataframe, quote_ident
 
 
 def test_node(state: AgentState) -> dict:
@@ -19,12 +19,15 @@ def test_node(state: AgentState) -> dict:
     """
     state.status = AnalysisStatus.TESTING
 
-    table = state.data_metadata.get("table_name", "data")
+    # table/id_col/colonnes de dimension viennent tous du schéma du CSV
+    # téléversé (non fiable) : quote_ident() est requis à chaque
+    # interpolation SQL -- voir sa docstring dans agent/tools/data_loader.py.
+    table = quote_ident(state.data_metadata.get("table_name", "data"))
     db_path = state.data_metadata.get("db_path")
     id_col = state.data_metadata.get("id_column")
     date_cols = set(state.data_metadata.get("date_range", {}).keys())
 
-    count_expr = f"COUNT(DISTINCT {id_col})" if id_col else "COUNT(*)"
+    count_expr = f"COUNT(DISTINCT {quote_ident(id_col)})" if id_col else "COUNT(*)"
     count_label = "nb_entites" if id_col else "nb_lignes"
 
     # Lister les colonnes disponibles
@@ -42,9 +45,9 @@ def test_node(state: AgentState) -> dict:
 
     for col in dimension_cols[:6]:  # Limiter à 6 colonnes
         query = f"""
-            SELECT {col}, {count_expr} as {count_label}
+            SELECT {quote_ident(col)}, {count_expr} as {count_label}
             FROM {table}
-            GROUP BY {col}
+            GROUP BY {quote_ident(col)}
             ORDER BY {count_label} DESC
         """
         try:

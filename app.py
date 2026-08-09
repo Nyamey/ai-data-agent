@@ -1,5 +1,6 @@
 # app.py — Application Streamlit de base
 import os
+import re
 import tempfile
 import uuid
 from datetime import datetime

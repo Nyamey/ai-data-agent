@@ -1,8 +1,8 @@
 # tests/test_data_loader.py — Chargement DuckDB et détection de schéma
+import duckdb
 import pandas as pd
-import pytest
 
-from agent.tools.data_loader import detect_id_column, execute_query, fetch_dataframe, load_data
+from agent.tools.data_loader import detect_id_column, execute_query, fetch_dataframe, load_data, quote_ident
 
 
 def test_detect_id_column_matches_common_patterns():
@@ -87,3 +87,61 @@ def test_execute_query_returns_error_string_on_bad_sql(tmp_path):
     db_path = str(tmp_path / "analytics.duckdb")
     result = execute_query("SELECT * FROM table_qui_nexiste_pas", db_path=db_path)
     assert result.startswith("Erreur SQL")
+
+
+def test_quote_ident_escapes_embedded_quotes():
+    assert quote_ident('a"b') == '"a""b"'
+
+
+def test_quote_ident_neutralizes_sql_injection_attempt():
+    # Régression : un nom de colonne comme celui-ci matche en plus le motif
+    # de détection de colonne identifiant (suffixe "_id") -- confirmé
+    # exploitable par test manuel avant l'ajout de quote_ident().
+    malicious = "1) as total FROM data UNION SELECT flag as total FROM secrets -- x_id"
+    assert quote_ident(malicious) == f'"{malicious}"'
+
+
+def test_load_data_does_not_leak_data_via_malicious_column_name(tmp_path):
+    # Reproduit l'attaque trouvée en revue de sécurité : un CSV dont la
+    # colonne s'appelle littéralement une tentative d'injection SQL ne doit
+    # ni planter l'inspection, ni permettre de lire une autre table DuckDB.
+    malicious_col = "1) as total FROM data UNION SELECT flag as total FROM secrets -- x_id"
+    df = pd.DataFrame({malicious_col: [1, 2, 3], "valeur": [10, 20, 30]})
+    csv_path = tmp_path / "malicious.csv"
+    df.to_csv(csv_path, index=False)
+
+    db_path = str(tmp_path / "analytics.duckdb")
+    con = duckdb.connect(db_path)
+    con.execute("CREATE TABLE secrets AS SELECT 'FUITE_DE_DONNEES' as flag")
+    con.close()
+
+    meta = load_data(str(csv_path), db_path=db_path)
+    assert meta["id_column"] == malicious_col  # détecté (suffixe "_id"), mais neutralisé à l'usage
+    assert meta["row_count"] == 3
+    assert meta["null_counts"] == {}
+
+
+def test_build_and_validate_nodes_survive_malicious_column_name(tmp_path):
+    from agent.nodes.build import build_node
+    from agent.nodes.validate import validate_node
+    from agent.state import AgentState
+
+    malicious_col = "1) as total FROM data UNION SELECT flag as total FROM secrets -- x_id"
+    df = pd.DataFrame({malicious_col: [1, 2, 3], "valeur": [10, 20, 30]})
+    csv_path = tmp_path / "malicious.csv"
+    df.to_csv(csv_path, index=False)
+
+    db_path = str(tmp_path / "analytics.duckdb")
+    con = duckdb.connect(db_path)
+    con.execute("CREATE TABLE secrets AS SELECT 'FUITE_DE_DONNEES' as flag")
+    con.close()
+
+    meta = load_data(str(csv_path), db_path=db_path)
+    state = AgentState(query="q", data_path=str(csv_path), data_metadata=meta)
+
+    build_result = build_node(state)
+    assert "FUITE_DE_DONNEES" not in build_result["weekly_retention"]["data"]
+
+    validate_result = validate_node(state)
+    total_check = str(validate_result["validation_checks"]["total_entites"])
+    assert "FUITE_DE_DONNEES" not in total_check

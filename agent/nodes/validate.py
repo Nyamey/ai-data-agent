@@ -1,6 +1,6 @@
 # agent/nodes/validate.py — Nœud 5 : Validation
 from agent.state import AgentState, AnalysisStatus
-from agent.tools.data_loader import execute_query
+from agent.tools.data_loader import execute_query, quote_ident
 
 
 def validate_node(state: AgentState) -> dict:
@@ -14,7 +14,10 @@ def validate_node(state: AgentState) -> dict:
     """
     state.status = AnalysisStatus.VALIDATING
 
-    table = state.data_metadata.get("table_name", "data")
+    # table/id_col/colonne de date viennent tous du schéma du CSV téléversé
+    # (non fiable) : quote_ident() est requis à chaque interpolation SQL --
+    # voir sa docstring dans agent/tools/data_loader.py.
+    table = quote_ident(state.data_metadata.get("table_name", "data"))
     db_path = state.data_metadata.get("db_path")
     id_col = state.data_metadata.get("id_column")
     date_cols = list(state.data_metadata.get("date_range", {}).keys())
@@ -25,7 +28,7 @@ def validate_node(state: AgentState) -> dict:
     try:
         if id_col:
             total = execute_query(
-                f"SELECT COUNT(DISTINCT {id_col}) as total FROM {table}", db_path=db_path
+                f"SELECT COUNT(DISTINCT {quote_ident(id_col)}) as total FROM {table}", db_path=db_path
             )
             checks["total_entites"] = {"result": total, "passed": True}
         else:
@@ -38,7 +41,9 @@ def validate_node(state: AgentState) -> dict:
     if date_cols:
         col = date_cols[0]
         try:
-            dates = execute_query(f"SELECT MIN({col}), MAX({col}) FROM {table}", db_path=db_path)
+            dates = execute_query(
+                f"SELECT MIN({quote_ident(col)}), MAX({quote_ident(col)}) FROM {table}", db_path=db_path
+            )
             checks["plage_dates"] = {"result": dates, "passed": True}
         except Exception as e:
             checks["plage_dates"] = {"result": str(e), "passed": False}

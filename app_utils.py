@@ -3,6 +3,7 @@
 # dépendre du runtime Streamlit (app.py exécute du code au niveau module).
 import csv
 import io
+import os
 import re
 import zipfile
 
@@ -231,7 +232,11 @@ def build_csv_export(files: list) -> tuple[bytes, str, str]:
     used_names = set()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for name, df in files:
-            base = re.sub(r"\.csv$", "", name, flags=re.IGNORECASE)
+            # os.path.basename() écarte tout composant de chemin qu'un nom de
+            # fichier téléversé pourrait contenir (ex. "../../evil.csv") --
+            # l'entrée ZIP ne doit jamais pouvoir pointer hors du dossier
+            # d'extraction attendu par qui l'ouvrira.
+            base = re.sub(r"\.csv$", "", os.path.basename(name), flags=re.IGNORECASE)
             csv_name = f"{base}_nettoye.csv"
             i = 2
             while csv_name.lower() in used_names:

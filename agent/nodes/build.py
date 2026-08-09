@@ -1,6 +1,6 @@
 # agent/nodes/build.py — Nœud 3 : Construction des analyses
 from agent.state import AgentState, AnalysisStatus
-from agent.tools.data_loader import execute_query
+from agent.tools.data_loader import execute_query, quote_ident
 
 
 def build_node(state: AgentState) -> dict:
@@ -15,19 +15,22 @@ def build_node(state: AgentState) -> dict:
     """
     state.status = AnalysisStatus.BUILDING
 
-    table = state.data_metadata.get("table_name", "data")
+    # table/id_col/date_col viennent tous du schéma du CSV téléversé (non
+    # fiable) : quote_ident() est requis à chaque interpolation SQL, pas une
+    # précaution superflue -- voir sa docstring dans agent/tools/data_loader.py.
+    table = quote_ident(state.data_metadata.get("table_name", "data"))
     db_path = state.data_metadata.get("db_path")
     id_col = state.data_metadata.get("id_column")
     date_cols = list(state.data_metadata.get("date_range", {}).keys())
     date_col = date_cols[0] if date_cols else None
 
-    count_expr = f"COUNT(DISTINCT {id_col})" if id_col else "COUNT(*)"
+    count_expr = f"COUNT(DISTINCT {quote_ident(id_col)})" if id_col else "COUNT(*)"
     count_label = "entités distinctes" if id_col else "lignes"
 
     if date_col:
         query = f"""
             SELECT
-                DATE_TRUNC('week', {date_col}) as semaine,
+                DATE_TRUNC('week', {quote_ident(date_col)}) as semaine,
                 {count_expr} as valeur
             FROM {table}
             GROUP BY 1

@@ -59,3 +59,25 @@ def test_add_validation_checks_reports_pass_fail(tmp_path):
     statuses = {r[0]: r[2] for r in rows[1:]}
     assert statuses["doublons"] == "OK"
     assert statuses["plage_dates"] == "ÉCHEC"
+
+
+def test_driver_analysis_neutralizes_formula_injection(tmp_path):
+    # Régression (CWE-1236) : une valeur de catégorie du CSV téléversé par
+    # l'utilisateur (ex. une valeur de "plateforme") atterrit telle quelle
+    # dans un onglet -- sans neutralisation, Excel l'interpréterait comme une
+    # formule à l'ouverture.
+    gen = ExcelGenerator()
+    df = pd.DataFrame({
+        "plateforme": ['=HYPERLINK("http://evil")', "+1+1", "mobile"],
+        "nb_entites": [3, 2, 40],
+    })
+    gen.add_driver_analysis(df, title="Facteur - plateforme")
+    path = str(tmp_path / "out.xlsx")
+    gen.save(path)
+
+    wb = openpyxl.load_workbook(path)
+    ws = wb["Facteur - plateforme"]
+    values = [row[0] for row in ws.iter_rows(min_row=2, values_only=True)]
+    assert values[0].startswith("'=")
+    assert values[1].startswith("'+")
+    assert values[2] == "mobile"

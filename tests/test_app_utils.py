@@ -1,6 +1,5 @@
 # tests/test_app_utils.py — Fonctions pures de app.py (nettoyage, exports, sécurité)
 import pandas as pd
-import pytest
 
 from app_utils import (
     build_csv_export,
@@ -150,6 +149,23 @@ def test_build_csv_export_multiple_files_returns_zip_with_unique_names():
         names = zf.namelist()
         assert len(names) == 2
         assert len(set(n.lower() for n in names)) == 2  # pas de collision silencieuse
+
+
+def test_build_csv_export_strips_path_components_from_filename():
+    # Un nom de fichier téléversé n'est pas garanti sans composant de
+    # chemin (client non-navigateur, en-tête forgé) : l'entrée ZIP ne doit
+    # jamais pouvoir désigner un chemin hors du dossier d'extraction.
+    files = [
+        ("../../evil.csv", pd.DataFrame({"a": [1]})),
+        ("../../evil.csv", pd.DataFrame({"a": [2]})),
+    ]
+    import zipfile
+    import io as _io
+    data, _, _ = build_csv_export(files)
+    with zipfile.ZipFile(_io.BytesIO(data)) as zf:
+        for entry_name in zf.namelist():
+            assert ".." not in entry_name
+            assert "/" not in entry_name and "\\" not in entry_name
 
 
 def test_build_pptx_report_produces_valid_deck():
