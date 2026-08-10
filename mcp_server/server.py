@@ -6,6 +6,7 @@ directement ta base de données DuckDB.
 """
 import os
 import json
+import re
 from pathlib import Path
 from mcp.server.mcpserver import MCPServer
 import duckdb
@@ -14,6 +15,44 @@ from dotenv import load_dotenv
 from agent.tools.data_loader import quote_ident
 
 load_dotenv()
+
+# execute_query() est exposée à des assistants IA externes (Claude Desktop,
+# VS Code Copilot...) -- un outil d'exploration de données n'a aucune raison
+# de permettre l'écriture ou la modification de schéma depuis ce canal-là
+# (DROP/CREATE une table, ATTACH un autre fichier arbitraire du disque,
+# INSTALL/LOAD une extension...). Une regex sur les mots-clés est une
+# défense en profondeur simple, pas un vrai parseur SQL : suffisante pour
+# empêcher un usage naïf ou un assistant mal aiguillé, pas un contournement
+# volontaire et sophistiqué -- dans ce cas, la vraie protection reste de ne
+# jamais exposer ce serveur à un client non fiable.
+_DISALLOWED_KEYWORDS = re.compile(
+    r"\b(INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|ATTACH|DETACH|COPY|EXPORT|"
+    r"IMPORT|CALL|PRAGMA|INSTALL|LOAD|SET|VACUUM|CHECKPOINT)\b",
+    re.IGNORECASE,
+)
+_READ_ONLY_START = re.compile(r"^\s*(SELECT|WITH|DESCRIBE|SHOW|EXPLAIN)\b", re.IGNORECASE)
+
+
+def _ensure_read_only(sql: str) -> None:
+    """Lève ValueError si `sql` n'est pas une simple requête de lecture.
+
+    Deux vérifications : une seule instruction (pas de `;` -- empêche
+    d'enchaîner une requête de lecture anodine avec une écriture cachée
+    derrière), et un mot-clé de départ appartenant à l'ensemble lecture
+    seule. `_DISALLOWED_KEYWORDS` couvre en plus les cas où un mot-clé
+    d'écriture apparaîtrait ailleurs que via un `;` (ex. dans une CTE).
+    """
+    stripped = sql.strip().rstrip(";")
+    if ";" in stripped:
+        raise ValueError("Une seule instruction SQL est autorisée par appel.")
+    if not _READ_ONLY_START.match(stripped):
+        raise ValueError(
+            "Seules les requêtes en lecture (SELECT/WITH/DESCRIBE/SHOW/EXPLAIN) sont autorisées."
+        )
+    if _DISALLOWED_KEYWORDS.search(stripped):
+        raise ValueError(
+            "Cette requête contient une opération d'écriture ou de modification de schéma, refusée."
+        )
 
 # Initialiser le serveur MCP
 mcp = MCPServer(
@@ -61,15 +100,25 @@ def health_check() -> dict:
 @mcp.tool()
 def execute_query(sql: str, limit: int = 1000) -> str:
     """
-    Exécute une requête SQL sur DuckDB et retourne les résultats.
-    
+    Exécute une requête de LECTURE SQL sur DuckDB et retourne les résultats.
+
+    Restreinte au lecture seule (SELECT/WITH/DESCRIBE/SHOW/EXPLAIN, une
+    seule instruction) -- voir _ensure_read_only(). Ce serveur expose DuckDB
+    à des assistants IA externes ; leur permettre d'écrire ou de modifier le
+    schéma depuis un outil d'exploration de données n'a pas sa place ici.
+
     Args:
-        sql: Requête SQL à exécuter
+        sql: Requête SQL à exécuter (lecture seule)
         limit: Nombre maximum de lignes à retourner (défaut: 1000)
-    
+
     Returns:
         Résultats formatés en tableau markdown
     """
+    try:
+        _ensure_read_only(sql)
+    except ValueError as e:
+        return f"Requête refusée : {e}"
+
     con = get_connection()
     try:
         df = con.execute(sql).fetchdf()

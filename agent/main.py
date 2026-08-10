@@ -17,7 +17,13 @@ def _print_progress(event: dict):
     # Chaîne intermédiaire pour éviter un backslash dans l'expression d'une
     # f-string, syntaxe invalide avant Python 3.12 (PEP 701) -- la CI teste
     # aussi 3.11.
-    status_label = event.get("status", "En cours d'exécution")
+    #
+    # status est un AnalysisStatus (str, Enum) : sans getattr(..., "value", ...),
+    # l'interpolation affichait littéralement "AnalysisStatus.BUILDING" au lieu
+    # de "construction" (Enum.__str__ prime sur str.__str__ pour ce mixin) --
+    # confirmé par une exécution CLI réelle.
+    status = event.get("status", "En cours d'exécution")
+    status_label = getattr(status, "value", status)
     print(f"\n[Statut : {status_label}]")
     audit_trail = event.get("audit_trail")
     if audit_trail:

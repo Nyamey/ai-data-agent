@@ -130,15 +130,18 @@ def _extract_table_metadata(con, table_name: str) -> dict:
         """).fetchone()
         date_range[col] = {"min": str(result[0]), "max": str(result[1])}
 
-    # Compter les valeurs manquantes par colonne
-    null_counts = {}
-    for s in schema:
-        col = s["column_name"]
-        null_count = con.execute(f"""
-            SELECT COUNT(*) FROM {table_ref} WHERE {quote_ident(col)} IS NULL
-        """).fetchone()[0]
-        if null_count > 0:
-            null_counts[col] = null_count
+    # Compter les valeurs manquantes par colonne -- une seule requête avec un
+    # SUM(CASE ...) par colonne plutôt qu'une requête par colonne (un CSV
+    # large en nombre de colonnes générait sinon un aller-retour DuckDB par
+    # colonne rien que pour l'inspection). COALESCE(..., 0) : sur une table
+    # vide, SUM() renvoie NULL plutôt que 0.
+    col_names = [s["column_name"] for s in schema]
+    null_select = ", ".join(
+        f"COALESCE(SUM(CASE WHEN {quote_ident(c)} IS NULL THEN 1 ELSE 0 END), 0) AS {quote_ident(c)}"
+        for c in col_names
+    )
+    null_row = con.execute(f"SELECT {null_select} FROM {table_ref}").fetchone()
+    null_counts = {col: int(count) for col, count in zip(col_names, null_row) if count > 0}
 
     # Détecter les doublons
     duplicate_count = con.execute(f"""

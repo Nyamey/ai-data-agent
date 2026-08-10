@@ -18,6 +18,37 @@ from agent.graph import build_agent_graph
 from agent.state import AgentState
 from ui_helpers import render_date_range, render_missing_values, render_user_facing_error
 
+# Libellés affichés pendant graph.stream(...) pour que l'utilisateur voie
+# quelle étape tourne, plutôt qu'un seul spinner statique pendant toute la
+# séquence (le nœud "recommend" à lui seul appelle un LLM, donc l'ensemble
+# construction/test/validation/recommandations/export peut prendre plusieurs
+# secondes sans aucun retour visuel jusqu'ici).
+_STEP_LABELS = {
+    "cadrage": "Cadrage de la question",
+    "inspection": "Inspection des données",
+    "construction": "Construction de la métrique",
+    "test": "Test des facteurs explicatifs",
+    "validation": "Validation des résultats",
+    "recommandations": "Formulation des recommandations",
+    "export": "Génération des livrables (Excel / PowerPoint)",
+    "termine": "Terminé",
+    "echec": "Erreur",
+}
+
+
+def _show_step_progress(placeholder, event: dict):
+    """Affiche l'étape en cours à partir d'un événement de graph.stream(...).
+
+    `status` est un AnalysisStatus (str, Enum) : getattr(..., "value", ...)
+    récupère sa valeur brute qu'il s'agisse d'un enum ou déjà d'une chaîne
+    (selon le point exact du cycle LangGraph où l'état est observé).
+    """
+    status = event.get("status")
+    if status is None:
+        return
+    status_value = getattr(status, "value", status)
+    placeholder.caption(f"Étape en cours : {_STEP_LABELS.get(status_value, status_value)}")
+
 
 def render_agent_mode(cleaned_files: list, query: str, provider: str, current_source: tuple):
     """
@@ -230,10 +261,12 @@ def _run_inspection_graph(
     """
     try:
         with st.spinner(spinner_text):
+            progress = st.empty()
             graph = build_agent_graph(checkpoint_path=checkpoint_path)
             config = {"configurable": {"thread_id": thread_id}}
-            for _ in graph.stream(initial_state, config=config, stream_mode="values"):
-                pass
+            for event in graph.stream(initial_state, config=config, stream_mode="values"):
+                _show_step_progress(progress, event)
+            progress.empty()
             snapshot = graph.get_state(config)
     except UserFacingError as e:
         # getattr() en défense en profondeur : un redéploiement Streamlit
@@ -326,12 +359,15 @@ def _render_single_agent_run(run_key: str, current_source: tuple, runs: dict):
         if approve or reject:
             try:
                 with st.spinner("Analyse en cours..."):
+                    progress = st.empty()
                     graph = build_agent_graph(checkpoint_path=run["checkpoint_path"])
                     config = {"configurable": {"thread_id": run["thread_id"]}}
                     graph.update_state(config, {"approval_received": approve})
                     final_event = {}
                     for event in graph.stream(None, config=config, stream_mode="values"):
                         final_event = event
+                        _show_step_progress(progress, event)
+                    progress.empty()
             except UserFacingError as e:
                 severity = getattr(e, "severity", "error")
                 retry_hint = (
@@ -373,6 +409,8 @@ def _render_single_agent_run(run_key: str, current_source: tuple, runs: dict):
                 with st.expander(d["dimension"]):
                     if "error" in d:
                         st.error(d["error"])
+                    elif "skipped" in d:
+                        st.info(d["skipped"])
                     else:
                         st.markdown(d["result"])
 

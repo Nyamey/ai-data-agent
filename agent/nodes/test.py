@@ -3,6 +3,15 @@ from scipy import stats as scipy_stats
 from agent.state import AgentState, AnalysisStatus
 from agent.tools.data_loader import fetch_dataframe, quote_ident
 
+# Au-delà de ce nombre de catégories distinctes, une colonne n'est plus une
+# "dimension" de comparaison exploitable (ex. une colonne quasi unique par
+# ligne, comme un commentaire libre ou un second identifiant) : le chi²
+# d'ajustement contre une répartition uniforme y détecte presque toujours un
+# écart "significatif" sans rien dire d'utile, et la table de résultats
+# (renvoyée telle quelle au LLM dans recommend_node) gonflerait le prompt
+# sans valeur ajoutée. On l'exclut plutôt que de la tester pour rien.
+MAX_DIMENSION_CATEGORIES = 30
+
 
 def test_node(state: AgentState) -> dict:
     """
@@ -15,7 +24,9 @@ def test_node(state: AgentState) -> dict:
 
     Pour chaque dimension, un test du chi² d'ajustement (H0 : répartition
     uniforme entre catégories) évalue si l'écart observé est statistiquement
-    significatif (p < 0.05) ou relève du bruit d'échantillonnage.
+    significatif (p < 0.05) ou relève du bruit d'échantillonnage. Les
+    dimensions trop fragmentées (> MAX_DIMENSION_CATEGORIES catégories) sont
+    exclues de ce test, voir MAX_DIMENSION_CATEGORIES.
     """
     state.status = AnalysisStatus.TESTING
 
@@ -52,6 +63,17 @@ def test_node(state: AgentState) -> dict:
         """
         try:
             df = fetch_dataframe(query, db_path=db_path)
+
+            if len(df) > MAX_DIMENSION_CATEGORIES:
+                driver_results.append({
+                    "dimension": col,
+                    "skipped": (
+                        f"{len(df)} catégories distinctes (plus de {MAX_DIMENSION_CATEGORIES}) -- "
+                        "trop fragmenté pour être une dimension de comparaison pertinente, exclu du test."
+                    ),
+                })
+                continue
+
             entry = {"dimension": col, "result": df.to_markdown(index=False), "query": query}
 
             # Test du chi² : il faut au moins 2 catégories et des effectifs

@@ -66,6 +66,38 @@ def test_test_node_does_not_flag_balanced_dimension(tmp_path):
     assert result["statistical_tests"]["platform"]["significant"] is False
 
 
+def test_test_node_skips_high_cardinality_dimension(tmp_path):
+    # Une colonne quasi unique par ligne (ex. un second identifiant, un
+    # commentaire libre) n'est pas une dimension de comparaison exploitable :
+    # le chi² d'ajustement y détecterait presque toujours un écart
+    # "significatif" sans rien dire d'utile. Régression : avant le garde-fou
+    # de cardinalité, une telle colonne polluait driver_analysis avec une
+    # table à une ligne par catégorie et un faux signal statistique.
+    import pandas as pd
+    from agent.nodes.test import MAX_DIMENSION_CATEGORIES
+
+    n = MAX_DIMENSION_CATEGORIES + 5
+    df = pd.DataFrame({
+        "customer_id": range(1, n + 1),
+        "commentaire_libre": [f"note-{i}" for i in range(n)],  # n catégories distinctes
+        "platform": (["mobile", "web"] * n)[:n],
+    })
+    csv_path = tmp_path / "high_cardinality.csv"
+    df.to_csv(csv_path, index=False)
+    state = _inspected_state(str(csv_path), tmp_path)
+
+    result = run_test_node(state)
+
+    by_dimension = {d["dimension"]: d for d in result["driver_analysis"]}
+    assert "skipped" in by_dimension["commentaire_libre"]
+    assert "commentaire_libre" not in result["statistical_tests"]
+    # Les dimensions exclues n'ont pas de "query" -- export_node (qui teste
+    # d.get("query")) les ignore donc naturellement, sans branche dédiée.
+    assert "query" not in by_dimension["commentaire_libre"]
+    # Une dimension normale à côté ne doit pas être affectée par le garde-fou.
+    assert "platform" in result["statistical_tests"]
+
+
 def test_test_node_records_error_for_a_dimension_that_fails(tmp_path):
     # Contrairement à execute_query() (utilisée par build/validate, qui
     # absorbe ses propres erreurs), fetch_dataframe() lève réellement --
