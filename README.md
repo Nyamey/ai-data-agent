@@ -124,7 +124,7 @@ DUCKDB_PATH=./data/analytics.duckdb
 streamlit run app.py
 ```
 
-![Aperçu de l'application Streamlit : upload multi-fichiers, rapport de nettoyage et aperçu des données](docs/screenshot-app.png)
+![Aperçu de l'application Streamlit en mode Agent complet : recommandations, livrables téléchargeables et chat de suivi interrogeant DuckDB en direct](docs/screenshot-app.png)
 
 La barre latérale propose deux modes :
 
@@ -191,7 +191,7 @@ ai-data-agent/
 │   ├── state.py            # Schéma d'état (Pydantic)
 │   ├── main.py             # Point d'entrée de l'agent
 │   ├── nodes/              # Les 8 nœuds du workflow (dont export.py)
-│   ├── tools/              # Chargement de données (DuckDB)
+│   ├── tools/              # Chargement de données (DuckDB), sécurité SQL, chat de suivi
 │   ├── llm/                # Config LLM multi-provider + fallback
 │   ├── output/             # Générateurs Excel / PPTX + vérification de cohérence
 │   └── streaming/          # Surveillance de dossier + détection d'anomalies
@@ -224,7 +224,7 @@ python -m pytest tests/ -v
 python -m pytest tests/ --cov=agent --cov=app_utils --cov=agent_ui --cov=simple_mode_ui --cov=ui_helpers --cov=mcp_server --cov-report=term-missing
 ```
 
-172 tests, ~92 % de couverture sur `agent/`, `app_utils.py`, `agent_ui.py`, `simple_mode_ui.py`, `ui_helpers.py` et `mcp_server/` combinés. La suite couvre le nettoyage/export de données, le chargement DuckDB et la détection de schéma (fichier seul et jointure multi-fichiers, y compris les régressions de sécurité SQL décrites ci-dessus), l'extraction de JSON depuis une réponse LLM imparfaite, tous les nœuds de l'agent — y compris `framing`/`recommend` (qui appellent un LLM) et `export` (génération Excel/PowerPoint) — le test de significativité chi² et son garde-fou de cardinalité, le repli entre providers LLM, le point d'entrée CLI (`agent/main.py`), la restriction en lecture seule du serveur MCP et du chat de suivi (`tests/test_chat_assistant.py`), la décision de déclenchement du pipeline de streaming et l'organisation de ses livrables, les générateurs Excel/PowerPoint et la vérification de cohérence entre les deux.
+174 tests, ~92 % de couverture sur `agent/`, `app_utils.py`, `agent_ui.py`, `simple_mode_ui.py`, `ui_helpers.py` et `mcp_server/` combinés. La suite couvre le nettoyage/export de données, le chargement DuckDB et la détection de schéma (fichier seul et jointure multi-fichiers, y compris les régressions de sécurité SQL décrites ci-dessus), l'extraction de JSON depuis une réponse LLM imparfaite, tous les nœuds de l'agent — y compris `framing`/`recommend` (qui appellent un LLM) et `export` (génération Excel/PowerPoint) — le test de significativité chi² et son garde-fou de cardinalité, le repli entre providers LLM, le point d'entrée CLI (`agent/main.py`), la restriction en lecture seule du serveur MCP et du chat de suivi (`tests/test_chat_assistant.py`), la décision de déclenchement du pipeline de streaming et l'organisation de ses livrables, les générateurs Excel/PowerPoint et la vérification de cohérence entre les deux.
 
 Pour `framing`/`recommend`, seul l'appel réseau est simulé (`litellm.completion`, avec des réponses représentatives d'un vrai modèle — JSON dans un bloc ```json, ou texte libre sans JSON) : `get_llm_response()`, l'extraction JSON et la logique des nœuds tournent pour de vrai, sans dépendre d'un provider externe ni de sa disponibilité du jour. Le même principe s'applique au point d'entrée CLI et aux tests d'intégration de l'interface (`tests/test_app_integration.py`) : ils pilotent réellement les widgets Streamlit (radio, sélecteurs, clics) via `AppTest`, avec le graphe LangGraph remplacé par un faux graphe déterministe (`tests/streamlit_scripts/`), pour vérifier bout en bout l'inspection, l'isolation entre fichiers, la jointure et l'affichage d'un quota épuisé sans dépendre du réseau. Une intégration continue (GitHub Actions, [`.github/workflows/tests.yml`](.github/workflows/tests.yml)) exécute cette suite sur Python 3.11 et 3.12 à chaque push/PR sur `main`, sans clé API requise.
 
@@ -247,6 +247,8 @@ Toutes les étapes prévues sont complétées :
 - [x] Analyse croisée entre plusieurs fichiers liés (jointure configurable par l'utilisateur, jusqu'à 5 fichiers)
 - [x] Couverture de tests des nœuds `framing`/`recommend` (réponse LLM simulée, reste de la chaîne réel)
 - [x] Export des livrables du pipeline de streaming (copiés dans `./outputs/stream/`, nommés d'après le fichier source)
+- [x] Restriction en lecture seule du serveur MCP et garde-fou de cardinalité sur le test du chi² (voir section Sécurité et Analyse des facteurs explicatifs)
+- [x] Chat de suivi sur les résultats avec accès direct à DuckDB (mode Agent complet)
 
 ---
 

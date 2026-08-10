@@ -224,6 +224,61 @@ def test_agent_mode_chat_answers_a_followup_question(monkeypatch, tmp_path):
     assert any('SELECT * FROM "t"' in c.value for c in at.code)
 
 
+def test_agent_mode_chat_llm_unavailable_shows_warning_not_error(monkeypatch, tmp_path):
+    # Même traitement que pour le cadrage/l'inspection (voir
+    # test_agent_mode_llm_unavailable_shows_warning_not_error) : le chat
+    # intercepte UserFacingError séparément d'une exception générique, et une
+    # question sans réponse ne doit pas rester bloquée dans l'historique.
+    from agent.llm.config import LLMUnavailableError
+
+    _patch_graph_factory(monkeypatch)
+    csv_path = _write_csv(tmp_path, "ventes.csv")
+
+    at = _run_harness(monkeypatch, AGENT_HARNESS, [csv_path])
+    at.session_state["agent_trigger_inspect"] = True
+    at.run()
+    at.button(key="agent_approve_0_ventes.csv").click().run()
+    assert not at.exception
+
+    import agent_ui
+
+    def raise_unavailable(**kwargs):
+        raise LLMUnavailableError("Le service d'analyse IA n'est pas configuré pour le moment.")
+
+    monkeypatch.setattr(agent_ui, "answer_question", raise_unavailable)
+
+    at.chat_input(key="chat_input_0_ventes.csv").set_value("Une question").run()
+
+    assert not at.exception
+    assert len(at.error) == 0
+    assert any("pas configuré" in w.value for w in at.warning)
+    assert at.session_state["agent_runs"]["0_ventes.csv"]["chat_history"] == []
+
+
+def test_agent_mode_chat_unexpected_error_shows_error_message(monkeypatch, tmp_path):
+    _patch_graph_factory(monkeypatch)
+    csv_path = _write_csv(tmp_path, "ventes.csv")
+
+    at = _run_harness(monkeypatch, AGENT_HARNESS, [csv_path])
+    at.session_state["agent_trigger_inspect"] = True
+    at.run()
+    at.button(key="agent_approve_0_ventes.csv").click().run()
+    assert not at.exception
+
+    import agent_ui
+
+    def raise_unexpected(**kwargs):
+        raise RuntimeError("panne inattendue")
+
+    monkeypatch.setattr(agent_ui, "answer_question", raise_unexpected)
+
+    at.chat_input(key="chat_input_0_ventes.csv").set_value("Une question").run()
+
+    assert not at.exception
+    assert any("panne inattendue" in e.value for e in at.error)
+    assert at.session_state["agent_runs"]["0_ventes.csv"]["chat_history"] == []
+
+
 def test_agent_mode_llm_unavailable_shows_warning_not_error(monkeypatch, tmp_path):
     from agent.llm.config import LLMUnavailableError
 
