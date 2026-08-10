@@ -24,29 +24,32 @@ def validate_node(state: AgentState) -> dict:
 
     checks = {}
 
+    # execute_query() absorbe déjà ses propres exceptions et renvoie une
+    # chaîne "Erreur SQL: ..." au lieu de lever -- un try/except autour de
+    # ses appels ne s'exécuterait donc jamais (code mort, jamais atteint) et
+    # masquait en plus un vrai bug : un contrôle marqué "passed": True même
+    # quand la requête sous-jacente avait échoué, puisque l'erreur n'était
+    # visible que dans le texte du résultat, jamais dans une exception.
+    def _passed(result: str) -> bool:
+        return not result.startswith("Erreur SQL")
+
     # Vérification 1 : nombre total d'entités distinctes (ou de lignes)
-    try:
-        if id_col:
-            total = execute_query(
-                f"SELECT COUNT(DISTINCT {quote_ident(id_col)}) as total FROM {table}", db_path=db_path
-            )
-            checks["total_entites"] = {"result": total, "passed": True}
-        else:
-            total = execute_query(f"SELECT COUNT(*) as total FROM {table}", db_path=db_path)
-            checks["total_lignes"] = {"result": total, "passed": True}
-    except Exception as e:
-        checks["total_entites"] = {"result": str(e), "passed": False}
+    if id_col:
+        total = execute_query(
+            f"SELECT COUNT(DISTINCT {quote_ident(id_col)}) as total FROM {table}", db_path=db_path
+        )
+        checks["total_entites"] = {"result": total, "passed": _passed(total)}
+    else:
+        total = execute_query(f"SELECT COUNT(*) as total FROM {table}", db_path=db_path)
+        checks["total_lignes"] = {"result": total, "passed": _passed(total)}
 
     # Vérification 2 : plage de dates (si une colonne date a été détectée)
     if date_cols:
         col = date_cols[0]
-        try:
-            dates = execute_query(
-                f"SELECT MIN({quote_ident(col)}), MAX({quote_ident(col)}) FROM {table}", db_path=db_path
-            )
-            checks["plage_dates"] = {"result": dates, "passed": True}
-        except Exception as e:
-            checks["plage_dates"] = {"result": str(e), "passed": False}
+        dates = execute_query(
+            f"SELECT MIN({quote_ident(col)}), MAX({quote_ident(col)}) FROM {table}", db_path=db_path
+        )
+        checks["plage_dates"] = {"result": dates, "passed": _passed(dates)}
 
     # Vérification 3 : doublons
     dup_count = state.data_metadata.get("duplicate_count", 0)

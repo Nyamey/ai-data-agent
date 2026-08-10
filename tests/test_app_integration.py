@@ -35,13 +35,16 @@ class FakeAgentGraph:
     _render_single_agent_run() les affiche sans branche manquante.
     """
 
-    def __init__(self, row_count=20, id_column="id", excel_path=None, presentation_path=None):
+    def __init__(self, row_count=20, id_column="id", excel_path=None, presentation_path=None,
+                 null_counts=None, date_range=None):
         self.resumed = False
         self.approval_received = None
         self.row_count = row_count
         self.id_column = id_column
         self.excel_path = excel_path
         self.presentation_path = presentation_path
+        self.null_counts = null_counts or {}
+        self.date_range = date_range or {}
 
     def _final_values(self):
         """État final complet -- même forme que ce que renverrait le vrai
@@ -89,8 +92,8 @@ class FakeAgentGraph:
                 "schema": [{"column_name": "id"}, {"column_name": "valeur"}],
                 "duplicate_count": 0,
                 "id_column": self.id_column,
-                "null_counts": {},
-                "date_range": {},
+                "null_counts": self.null_counts,
+                "date_range": self.date_range,
             },
         })
 
@@ -150,6 +153,27 @@ def test_agent_mode_single_file_reaches_approval(monkeypatch, tmp_path):
     assert run["snapshot_values"]["business_question"] == "Question reformulée factice"
     approve_buttons = [b for b in at.button if b.key == "agent_approve_0_ventes.csv"]
     assert len(approve_buttons) == 1
+
+
+def test_agent_mode_shows_missing_values_and_date_range_tables(monkeypatch, tmp_path):
+    # meta["null_counts"]/["date_range"] vides (le cas par défaut des autres
+    # tests) ne déclenchent jamais render_missing_values()/render_date_range() --
+    # ce test vérifie spécifiquement le chemin où ces tableaux s'affichent.
+    _patch_graph_factory(
+        monkeypatch,
+        null_counts={"segment": 3},
+        date_range={"activity_date": {"min": "2024-01-01", "max": "2024-06-01"}},
+    )
+    csv_path = _write_csv(tmp_path, "ventes.csv")
+
+    at = _run_harness(monkeypatch, AGENT_HARNESS, [csv_path])
+    at.session_state["agent_trigger_inspect"] = True
+    at.run()
+
+    assert not at.exception
+    assert len(at.warning) == 1  # render_missing_values() commence par st.warning(...)
+    assert any("Plage de dates" in c.value for c in at.caption)  # render_date_range()
+    assert len(at.dataframe) >= 2  # une table par fonction
 
 
 def test_agent_mode_single_file_approve_shows_results_and_downloads(monkeypatch, tmp_path):

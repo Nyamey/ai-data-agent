@@ -41,10 +41,10 @@ def build_node(state: AgentState) -> dict:
         query = f"SELECT {count_expr} as valeur FROM {table}"
         label = f"Total ({count_label}) -- aucune colonne date détectée"
 
-    try:
-        result = execute_query(query, db_path=db_path)
-    except Exception as e:
-        result = f"Erreur: {e}"
+    # execute_query() absorbe déjà ses propres exceptions (renvoie une
+    # chaîne "Erreur SQL: ..." au lieu de lever) : un try/except ici ne
+    # s'exécuterait jamais.
+    result = execute_query(query, db_path=db_path)
 
     return {
         "status": AnalysisStatus.TESTING,

@@ -66,6 +66,26 @@ def test_test_node_does_not_flag_balanced_dimension(tmp_path):
     assert result["statistical_tests"]["platform"]["significant"] is False
 
 
+def test_test_node_records_error_for_a_dimension_that_fails(tmp_path):
+    # Contrairement à execute_query() (utilisée par build/validate, qui
+    # absorbe ses propres erreurs), fetch_dataframe() lève réellement --
+    # test_node doit donc rattraper l'échec d'UNE dimension sans faire
+    # échouer les autres. Une colonne annoncée dans le schéma mais absente
+    # de la vraie table force cet échec.
+    import pandas as pd
+    df = pd.DataFrame({"customer_id": range(1, 21), "platform": ["mobile", "web"] * 10})
+    csv_path = tmp_path / "data.csv"
+    df.to_csv(csv_path, index=False)
+    state = _inspected_state(str(csv_path), tmp_path)
+    state.data_metadata["schema"].append({"column_name": "colonne_fantome", "column_type": "VARCHAR"})
+
+    result = run_test_node(state)
+
+    by_dimension = {d["dimension"]: d for d in result["driver_analysis"]}
+    assert "error" in by_dimension["colonne_fantome"]
+    assert "platform" in by_dimension and "error" not in by_dimension["platform"]
+
+
 def test_validate_node_reports_duplicates_check(sample_retention_csv, tmp_path):
     state = _inspected_state(sample_retention_csv, tmp_path)
     result = validate_node(state)
@@ -79,6 +99,23 @@ def test_validate_node_uses_row_count_when_no_id_column(sample_no_id_csv, tmp_pa
     result = validate_node(state)
     assert "total_lignes" in result["validation_checks"]
     assert "total_entites" not in result["validation_checks"]
+
+
+def test_validate_node_marks_check_failed_when_query_errors(sample_retention_csv, tmp_path):
+    # Régression : execute_query() absorbe ses propres exceptions et renvoie
+    # une chaîne "Erreur SQL: ..." plutôt que de lever -- un ancien
+    # try/except autour de ses appels ne s'exécutait donc jamais, et
+    # "passed" restait à True même quand la requête sous-jacente échouait
+    # (visible uniquement dans le texte du résultat). Ici, un nom de table
+    # inexistant force cet échec.
+    state = _inspected_state(sample_retention_csv, tmp_path)
+    state.data_metadata["table_name"] = "table_qui_nexiste_pas"
+
+    result = validate_node(state)
+
+    check = result["validation_checks"]["total_entites"]
+    assert check["passed"] is False
+    assert "Erreur SQL" in check["result"]
 
 
 def test_approval_check_node_approved_moves_to_building():
@@ -99,6 +136,16 @@ def test_format_inspection_summary_includes_metadata(sample_retention_csv, tmp_p
     summary = format_inspection_summary(state)
     assert "Question" in summary
     assert str(state.data_metadata["row_count"]) in summary
+
+
+def test_format_inspection_summary_surfaces_join_warning(sample_retention_csv, tmp_path):
+    state = _inspected_state(sample_retention_csv, tmp_path)
+    state.data_metadata["join_warning"] = "La jointure ne produit aucune ligne."
+
+    summary = format_inspection_summary(state)
+
+    assert "ATTENTION" in summary
+    assert "La jointure ne produit aucune ligne." in summary
 
 
 def test_inspection_node_uses_load_data_without_join_spec(sample_retention_csv, tmp_path):
