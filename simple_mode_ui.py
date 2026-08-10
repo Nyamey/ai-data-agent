@@ -11,7 +11,7 @@ from litellm import completion
 
 from agent.llm.config import DEFAULT_MODELS, OPENROUTER_FALLBACK_MODELS
 from app_utils import build_csv_export, build_excel_report, build_markdown_report, build_pptx_report
-from ui_helpers import render_llm_unavailable_warning
+from ui_helpers import render_user_facing_error
 
 
 def render_simple_mode(cleaned_files: list, describe_list: list, query: str, provider: str, current_source: tuple):
@@ -119,11 +119,12 @@ def _run_simple_mode_analysis(
             st.session_state["history"] = st.session_state["history"][-20:]
         else:
             st.session_state["last_result"] = None
-            render_llm_unavailable_warning(
+            render_user_facing_error(
                 f"Tous les modèles gratuits sont temporairement indisponibles "
                 f"({provider}). Réessaie dans quelques instants, ou choisis l'autre "
                 "provider dans la barre latérale.",
                 str(last_error),
+                severity="warning",
             )
 
 

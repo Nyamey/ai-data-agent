@@ -31,20 +31,25 @@ def render_date_range(date_range_by_column: dict):
     )
 
 
-def render_llm_unavailable_warning(user_message: str, technical_detail: str = None):
-    """Affiche un quota LLM épuisé comme un avertissement, pas une erreur bloquante.
+def render_user_facing_error(user_message: str, technical_detail: str = None, severity: str = "error"):
+    """Affiche une UserFacingError (agent/errors.py) sans jamais montrer son détail technique.
 
-    Une limite journalière atteinte (Groq/OpenRouter/Mistral) n'est pas un
-    bug de l'application -- st.error() (rouge, ton alarmant) donnait
-    pourtant cette impression. st.warning() communique mieux "c'est
-    temporaire, réessayez plus tard".
+    `severity` distingue deux situations qui ne se présentent pas pareil :
+    - "warning" : temporaire, pas la faute de l'utilisateur (ex. quota LLM
+      épuisé) -- st.warning() (jaune) communique "réessayez plus tard", pas
+      un blocage.
+    - "error" : nécessite une action de l'utilisateur pour continuer (ex.
+      jointure mal configurée) -- st.error() (rouge) attire l'attention sur
+      ce qui doit être corrigé.
 
-    Le détail technique (traces litellm par provider) n'a rien à faire dans
-    l'interface : un visiteur de l'app déployée n'a ni besoin ni moyen d'agir
-    dessus (il ne peut pas configurer de clé API). Il part uniquement dans
-    les logs serveur (console en local, "Manage app" → logs sur Streamlit
-    Cloud), consultables par qui exploite l'app, pas par qui l'utilise.
+    Dans les deux cas, le détail technique (traces litellm/DuckDB, SQL
+    généré, noms de table internes) n'a rien à faire dans l'interface : ni
+    besoin ni moyen d'agir dessus pour qui visite l'app déployée (retour
+    utilisateur explicite après qu'une trace DuckDB brute s'y soit
+    retrouvée). Il part uniquement dans les logs serveur (console en local,
+    "Manage app" → logs sur Streamlit Cloud), consultables par qui exploite
+    l'app, pas par qui l'utilise.
     """
-    st.warning(user_message)
+    (st.warning if severity == "warning" else st.error)(user_message)
     if technical_detail:
-        print(f"[LLM indisponible] {technical_detail}")
+        print(f"[Erreur] {technical_detail}")

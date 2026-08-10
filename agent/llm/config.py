@@ -5,6 +5,8 @@ import re
 from litellm import completion
 from dotenv import load_dotenv
 
+from agent.errors import UserFacingError
+
 load_dotenv()
 
 
@@ -66,26 +68,16 @@ OPENROUTER_FALLBACK_MODELS = [
 PROVIDER_FALLBACK_ORDER = ["groq", "openrouter", "mistral"]
 
 
-class LLMUnavailableError(RuntimeError):
+class LLMUnavailableError(UserFacingError):
     """Levée quand aucun provider LLM configuré n'a pu répondre.
 
-    Un message clair et déjà traduit ici évite qu'une exception litellm
-    brute (souvent un jargon HTTP/JSON illisible pour un utilisateur non
-    technique) ne remonte telle quelle jusqu'à l'interface Streamlit ou au
-    terminal. `user_message` et `technical_detail` sont exposés séparément
-    (en plus de str(exception), qui concatène les deux) pour qu'un appelant
-    comme l'UI Streamlit puisse afficher le premier bien en vue -- pas comme
-    une erreur bloquante, juste une limite temporaire -- et reléguer le
-    second (traces litellm par provider) dans un détail repliable.
+    Un quota épuisé ou une panne de provider est temporaire et n'est pas la
+    faute de l'utilisateur -- severity="warning" (voir UserFacingError)
+    pour que l'UI l'affiche comme "réessayez plus tard", pas comme un
+    blocage nécessitant une action.
     """
 
-    def __init__(self, user_message: str, technical_detail: str = None):
-        super().__init__(
-            f"{user_message} Détail technique : {technical_detail}"
-            if technical_detail else user_message
-        )
-        self.user_message = user_message
-        self.technical_detail = technical_detail
+    severity = "warning"
 
 
 def _api_key_for(provider: str) -> str | None:

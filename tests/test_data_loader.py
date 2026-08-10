@@ -4,6 +4,7 @@ import pandas as pd
 import pytest
 
 from agent.tools.data_loader import (
+    JoinConfigurationError,
     _diagnose_join,
     detect_id_column,
     execute_query,
@@ -276,10 +277,11 @@ def test_load_joined_data_rejects_unsupported_join_type(sample_joinable_csvs, tm
 def test_load_joined_data_gives_clear_error_on_type_mismatch(tmp_path):
     # Rapporté par l'utilisateur : joindre une colonne date à une colonne
     # texte (ex. "make" avec des valeurs comme "alfa-romero") fait échouer
-    # la CREATE TABLE avec un message DuckDB technique et peu exploitable
-    # ("Conversion Error: invalid date field format..."). Un ValueError
-    # clair et actionnable doit remplacer ce message, pas juste le laisser
-    # remonter tel quel.
+    # la CREATE TABLE avec un message DuckDB technique, illisible et truffé
+    # de noms de table internes générés -- affiché tel quel à l'écran avant
+    # ce correctif. user_message doit rester propre et actionnable ; le
+    # détail DuckDB brut ne doit apparaître que dans technical_detail,
+    # jamais dans le message destiné à l'utilisateur.
     cars = pd.DataFrame({"make": ["alfa-romero", "audi", "bmw"] * 5, "price": range(15)})
     sales = pd.DataFrame({"date": ["2024-01-01", "2024-01-02", "2024-01-03"] * 5, "amount": range(15)})
     cars_path, sales_path = tmp_path / "cars.csv", tmp_path / "sales.csv"
@@ -292,8 +294,15 @@ def test_load_joined_data_gives_clear_error_on_type_mismatch(tmp_path):
                    "file_column": "make", "on_column": "date", "how": "inner"}],
     }
 
-    with pytest.raises(ValueError, match="ne semblent pas avoir le même type"):
+    with pytest.raises(JoinConfigurationError) as exc_info:
         load_joined_data([str(sales_path), str(cars_path)], spec, db_path=str(tmp_path / "analytics.duckdb"))
+
+    error = exc_info.value
+    assert error.severity == "error"
+    assert "ne semblent pas avoir le même type" in error.user_message
+    assert "alfa-romero" not in error.user_message
+    assert "CREATE TABLE" not in error.user_message
+    assert "alfa-romero" in error.technical_detail
 
 
 def test_load_joined_data_left_join_keeps_unmatched_rows(tmp_path):

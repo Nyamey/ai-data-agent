@@ -13,10 +13,10 @@ import uuid
 import pandas as pd
 import streamlit as st
 
+from agent.errors import UserFacingError
 from agent.graph import build_agent_graph
-from agent.llm.config import LLMUnavailableError
 from agent.state import AgentState
-from ui_helpers import render_date_range, render_llm_unavailable_warning, render_missing_values
+from ui_helpers import render_date_range, render_missing_values, render_user_facing_error
 
 
 def render_agent_mode(cleaned_files: list, query: str, provider: str, current_source: tuple):
@@ -222,9 +222,11 @@ def _run_inspection_graph(
     (mono-fichier vs jointure) : au-delà de la construction de l'état initial,
     les deux lancent le graphe et gèrent ses échecs de façon identique.
 
-    Distingue LLMUnavailableError (quota LLM épuisé -- une limite temporaire,
-    pas un bug) des autres exceptions, pour que _render_single_agent_run()
-    puisse l'afficher comme un avertissement plutôt qu'une erreur bloquante.
+    Distingue UserFacingError (agent/errors.py -- un message déjà pensé pour
+    l'utilisateur : quota LLM épuisé, jointure mal configurée...) des autres
+    exceptions, pour que _render_single_agent_run() l'affiche proprement
+    (message clair, détail technique relégué aux logs) plutôt que de
+    laisser passer une trace brute -- voir render_user_facing_error().
     """
     try:
         with st.spinner(spinner_text):
@@ -233,15 +235,16 @@ def _run_inspection_graph(
             for _ in graph.stream(initial_state, config=config, stream_mode="values"):
                 pass
             snapshot = graph.get_state(config)
-    except LLMUnavailableError as e:
+    except UserFacingError as e:
         # getattr() en défense en profondeur : un redéploiement Streamlit
         # Cloud a déjà surpris une instance encore sur l'ancienne classe
-        # LLMUnavailableError (sans ces attributs) pendant la bascule --
-        # jamais une AttributeError ici, même dans ce cas transitoire.
+        # d'exception (sans ces attributs) pendant la bascule -- jamais une
+        # AttributeError ici, même dans ce cas transitoire.
         runs[run_key] = {
             "source": current_source,
-            "llm_unavailable": getattr(e, "user_message", str(e)),
-            "llm_detail": getattr(e, "technical_detail", None),
+            "user_error": getattr(e, "user_message", str(e)),
+            "error_detail": getattr(e, "technical_detail", None),
+            "error_severity": getattr(e, "severity", "error"),
         }
         return
     except Exception as e:
@@ -265,8 +268,8 @@ def _render_single_agent_run(run_key: str, current_source: tuple, runs: dict):
         st.info('Clique sur "Lancer le cadrage et l\'inspection" pour démarrer.')
         return
 
-    if run.get("llm_unavailable"):
-        render_llm_unavailable_warning(run["llm_unavailable"], run.get("llm_detail"))
+    if run.get("user_error"):
+        render_user_facing_error(run["user_error"], run.get("error_detail"), run.get("error_severity", "error"))
         return
 
     if run.get("error"):
@@ -329,11 +332,16 @@ def _render_single_agent_run(run_key: str, current_source: tuple, runs: dict):
                     final_event = {}
                     for event in graph.stream(None, config=config, stream_mode="values"):
                         final_event = event
-            except LLMUnavailableError as e:
-                render_llm_unavailable_warning(
-                    f"{getattr(e, 'user_message', str(e))} Réessaie en cliquant à nouveau sur "
-                    "Approuver/Rejeter une fois le quota rétabli.",
+            except UserFacingError as e:
+                severity = getattr(e, "severity", "error")
+                retry_hint = (
+                    " Réessaie en cliquant à nouveau sur Approuver/Rejeter une fois le "
+                    "quota rétabli." if severity == "warning" else ""
+                )
+                render_user_facing_error(
+                    f"{getattr(e, 'user_message', str(e))}{retry_hint}",
                     getattr(e, "technical_detail", None),
+                    severity,
                 )
                 return
             except Exception as e:

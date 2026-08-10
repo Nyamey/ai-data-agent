@@ -5,6 +5,8 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
+from agent.errors import UserFacingError
+
 load_dotenv()
 
 ID_COLUMN_PATTERN = re.compile(r"(^id$)|(_id$)|(^id_)", re.IGNORECASE)
@@ -13,6 +15,16 @@ ID_COLUMN_PATTERN = re.compile(r"(^id$)|(_id$)|(^id_)", re.IGNORECASE)
 # passe par ici) : au-delà des tirets/points déjà neutralisés par le seul
 # .replace() historique, tout le reste doit être neutralisé aussi.
 UNSAFE_TABLE_CHARS = re.compile(r"[^A-Za-z0-9_]")
+
+
+class JoinConfigurationError(UserFacingError):
+    """Levée quand la jointure configurée par l'utilisateur ne peut pas aboutir.
+
+    Typiquement des colonnes de types incompatibles (ex. une colonne date
+    jointe à une colonne de texte) -- severity="error" (le défaut de
+    UserFacingError) : contrairement à un quota LLM épuisé, ça ne se résout
+    pas tout seul, l'utilisateur doit revoir sa configuration.
+    """
 
 
 def quote_ident(name: str) -> str:
@@ -273,17 +285,19 @@ def load_joined_data(csv_paths: list[str], join_spec: dict, db_path: str = None)
         # La cause la plus fréquente : les deux colonnes choisies pour une
         # étape de jointure n'ont pas des types compatibles (ex. une colonne
         # date jointe à une colonne texte) -- DuckDB tente alors une
-        # conversion implicite qui échoue avec un message technique peu
-        # exploitable pour un utilisateur non technique (confirmé par test
-        # manuel : "invalid date field format: 'alfa-romero'..."). On le
-        # remplace par un message clair et actionnable, sans perdre le détail
-        # d'origine.
+        # conversion implicite qui échoue avec un message technique illisible
+        # pour un utilisateur non technique, qui plus est truffé de noms de
+        # table internes générés (confirmé par retour utilisateur sur le
+        # message brut affiché avant ce correctif). user_message reste
+        # générique et actionnable ; le détail DuckDB part dans
+        # technical_detail, jamais affiché à l'écran (voir UserFacingError).
         con.close()
-        raise ValueError(
-            "La jointure a échoué : les colonnes choisies pour au moins une "
-            "étape ne semblent pas avoir le même type (par exemple une colonne "
-            "de date jointe à une colonne de texte). Vérifiez la configuration "
-            f"de la jointure. Détail technique : {e}"
+        raise JoinConfigurationError(
+            "La jointure n'a pas pu être réalisée : les colonnes choisies pour "
+            "au moins une étape ne semblent pas avoir le même type (par exemple "
+            "une colonne de date jointe à une colonne de texte). Reconfigurez "
+            "la jointure avec des colonnes compatibles.",
+            technical_detail=str(e),
         ) from e
 
     metadata = _extract_table_metadata(con, joined_table)
