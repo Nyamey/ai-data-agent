@@ -263,11 +263,28 @@ def load_joined_data(csv_paths: list[str], join_spec: dict, db_path: str = None)
             select_parts.append(f"{quote_ident(table)}.{quote_ident(col)} AS {quote_ident(alias)}")
 
     joined_table = _table_name_from_path("joined_" + "_".join(table_by_path.values()))[:63]
-    con.execute(f"""
-        CREATE OR REPLACE TABLE {quote_ident(joined_table)} AS
-        SELECT {', '.join(select_parts)}
-        FROM {from_clause}
-    """)
+    try:
+        con.execute(f"""
+            CREATE OR REPLACE TABLE {quote_ident(joined_table)} AS
+            SELECT {', '.join(select_parts)}
+            FROM {from_clause}
+        """)
+    except Exception as e:
+        # La cause la plus fréquente : les deux colonnes choisies pour une
+        # étape de jointure n'ont pas des types compatibles (ex. une colonne
+        # date jointe à une colonne texte) -- DuckDB tente alors une
+        # conversion implicite qui échoue avec un message technique peu
+        # exploitable pour un utilisateur non technique (confirmé par test
+        # manuel : "invalid date field format: 'alfa-romero'..."). On le
+        # remplace par un message clair et actionnable, sans perdre le détail
+        # d'origine.
+        con.close()
+        raise ValueError(
+            "La jointure a échoué : les colonnes choisies pour au moins une "
+            "étape ne semblent pas avoir le même type (par exemple une colonne "
+            "de date jointe à une colonne de texte). Vérifiez la configuration "
+            f"de la jointure. Détail technique : {e}"
+        ) from e
 
     metadata = _extract_table_metadata(con, joined_table)
     con.close()

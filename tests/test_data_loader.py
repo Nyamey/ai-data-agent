@@ -273,6 +273,29 @@ def test_load_joined_data_rejects_unsupported_join_type(sample_joinable_csvs, tm
         )
 
 
+def test_load_joined_data_gives_clear_error_on_type_mismatch(tmp_path):
+    # Rapporté par l'utilisateur : joindre une colonne date à une colonne
+    # texte (ex. "make" avec des valeurs comme "alfa-romero") fait échouer
+    # la CREATE TABLE avec un message DuckDB technique et peu exploitable
+    # ("Conversion Error: invalid date field format..."). Un ValueError
+    # clair et actionnable doit remplacer ce message, pas juste le laisser
+    # remonter tel quel.
+    cars = pd.DataFrame({"make": ["alfa-romero", "audi", "bmw"] * 5, "price": range(15)})
+    sales = pd.DataFrame({"date": ["2024-01-01", "2024-01-02", "2024-01-03"] * 5, "amount": range(15)})
+    cars_path, sales_path = tmp_path / "cars.csv", tmp_path / "sales.csv"
+    cars.to_csv(cars_path, index=False)
+    sales.to_csv(sales_path, index=False)
+
+    spec = {
+        "root": str(sales_path),
+        "joins": [{"file": str(cars_path), "on_file": str(sales_path),
+                   "file_column": "make", "on_column": "date", "how": "inner"}],
+    }
+
+    with pytest.raises(ValueError, match="ne semblent pas avoir le même type"):
+        load_joined_data([str(sales_path), str(cars_path)], spec, db_path=str(tmp_path / "analytics.duckdb"))
+
+
 def test_load_joined_data_left_join_keeps_unmatched_rows(tmp_path):
     a = pd.DataFrame({"id": [1, 2, 3]})
     b = pd.DataFrame({"a_id": [1, 2], "label": ["x", "y"]})  # pas de correspondance pour id=3
