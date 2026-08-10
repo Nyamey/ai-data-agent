@@ -16,6 +16,47 @@ ID_COLUMN_PATTERN = re.compile(r"(^id$)|(_id$)|(^id_)", re.IGNORECASE)
 # .replace() historique, tout le reste doit être neutralisé aussi.
 UNSAFE_TABLE_CHARS = re.compile(r"[^A-Za-z0-9_]")
 
+# Utilisés par ensure_read_only_query() -- voir sa docstring. Partagé par le
+# serveur MCP (mcp_server/server.py) et l'assistant conversationnel
+# (agent/tools/chat_assistant.py) : les deux exécutent du SQL généré par un
+# tiers non fiable (un client MCP externe, ou le LLM lui-même à partir d'une
+# question utilisateur) et ont donc besoin exactement de la même défense.
+_DISALLOWED_SQL_KEYWORDS = re.compile(
+    r"\b(INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|ATTACH|DETACH|COPY|EXPORT|"
+    r"IMPORT|CALL|PRAGMA|INSTALL|LOAD|SET|VACUUM|CHECKPOINT)\b",
+    re.IGNORECASE,
+)
+_READ_ONLY_SQL_START = re.compile(r"^\s*(SELECT|WITH|DESCRIBE|SHOW|EXPLAIN)\b", re.IGNORECASE)
+
+
+def ensure_read_only_query(sql: str) -> None:
+    """Lève ValueError si `sql` n'est pas une simple requête de lecture.
+
+    Deux vérifications : une seule instruction (pas de `;` -- empêche
+    d'enchaîner une requête de lecture anodine avec une écriture cachée
+    derrière), et un mot-clé de départ appartenant à l'ensemble lecture
+    seule. `_DISALLOWED_SQL_KEYWORDS` couvre en plus les cas où un mot-clé
+    d'écriture apparaîtrait ailleurs que via un `;` (ex. dans une CTE).
+
+    Une regex sur les mots-clés est une défense en profondeur simple, pas un
+    vrai parseur SQL : suffisante pour empêcher un usage naïf ou un LLM mal
+    aiguillé (via un client MCP externe, ou une question utilisateur qui
+    tenterait d'orienter le SQL généré vers une écriture), pas un
+    contournement volontaire et sophistiqué -- dans ce cas, la vraie
+    protection reste de ne jamais exposer ces outils à un appelant non fiable.
+    """
+    stripped = sql.strip().rstrip(";")
+    if ";" in stripped:
+        raise ValueError("Une seule instruction SQL est autorisée par appel.")
+    if not _READ_ONLY_SQL_START.match(stripped):
+        raise ValueError(
+            "Seules les requêtes en lecture (SELECT/WITH/DESCRIBE/SHOW/EXPLAIN) sont autorisées."
+        )
+    if _DISALLOWED_SQL_KEYWORDS.search(stripped):
+        raise ValueError(
+            "Cette requête contient une opération d'écriture ou de modification de schéma, refusée."
+        )
+
 
 class JoinConfigurationError(UserFacingError):
     """Levée quand la jointure configurée par l'utilisateur ne peut pas aboutir.

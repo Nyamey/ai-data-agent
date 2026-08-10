@@ -194,6 +194,36 @@ def test_agent_mode_single_file_approve_shows_results_and_downloads(monkeypatch,
     assert len(dl_buttons) == 1
 
 
+def test_agent_mode_chat_answers_a_followup_question(monkeypatch, tmp_path):
+    # L'assistant conversationnel (agent/tools/chat_assistant.answer_question)
+    # est mocké ici -- ses propres branches (décision needs_query, exécution
+    # SQL, garde-fou lecture seule) sont testées à part dans
+    # tests/test_chat_assistant.py. Ce test vérifie seulement le câblage
+    # côté UI : historique affiché, SQL affichée si renvoyée, isolation par run_key.
+    _patch_graph_factory(monkeypatch)
+    csv_path = _write_csv(tmp_path, "ventes.csv")
+
+    at = _run_harness(monkeypatch, AGENT_HARNESS, [csv_path])
+    at.session_state["agent_trigger_inspect"] = True
+    at.run()
+    at.button(key="agent_approve_0_ventes.csv").click().run()
+    assert not at.exception
+
+    import agent_ui
+    monkeypatch.setattr(
+        agent_ui, "answer_question",
+        lambda **kwargs: {"answer": "La plateforme mobile domine.", "sql": 'SELECT * FROM "t"'},
+    )
+
+    at.chat_input(key="chat_input_0_ventes.csv").set_value("Quelle plateforme domine ?").run()
+
+    assert not at.exception
+    all_markdown = "".join(m.value for m in at.markdown)
+    assert "Quelle plateforme domine ?" in all_markdown
+    assert "La plateforme mobile domine." in all_markdown
+    assert any('SELECT * FROM "t"' in c.value for c in at.code)
+
+
 def test_agent_mode_llm_unavailable_shows_warning_not_error(monkeypatch, tmp_path):
     from agent.llm.config import LLMUnavailableError
 

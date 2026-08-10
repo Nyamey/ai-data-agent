@@ -16,6 +16,7 @@ import streamlit as st
 from agent.errors import UserFacingError
 from agent.graph import build_agent_graph
 from agent.state import AgentState
+from agent.tools.chat_assistant import answer_question
 from ui_helpers import render_date_range, render_missing_values, render_user_facing_error
 
 # Libellés affichés pendant graph.stream(...) pour que l'utilisateur voie
@@ -106,18 +107,18 @@ def render_agent_mode(cleaned_files: list, query: str, provider: str, current_so
                 )
 
     if join_spec_by_name is not None:
-        _render_single_agent_run("join_0", current_source, runs)
+        _render_single_agent_run("join_0", current_source, runs, llm_provider)
         return
 
     if len(cleaned_files) == 1:
         name, _ = cleaned_files[0]
-        _render_single_agent_run(f"0_{name}", current_source, runs)
+        _render_single_agent_run(f"0_{name}", current_source, runs, llm_provider)
         return
 
     tabs = st.tabs([name for name, _ in cleaned_files])
     for i, (tab, (name, _)) in enumerate(zip(tabs, cleaned_files)):
         with tab:
-            _render_single_agent_run(f"{i}_{name}", current_source, runs)
+            _render_single_agent_run(f"{i}_{name}", current_source, runs, llm_provider)
 
 
 def _render_join_config_ui(cleaned_files: list) -> dict:
@@ -294,7 +295,7 @@ def _run_inspection_graph(
     }
 
 
-def _render_single_agent_run(run_key: str, current_source: tuple, runs: dict):
+def _render_single_agent_run(run_key: str, current_source: tuple, runs: dict, llm_provider: str):
     """Affiche le cycle complet (cadrage/inspection/approbation/résultats) d'un fichier."""
     run = runs.get(run_key)
     if not run or run.get("source") != current_source:
@@ -461,6 +462,94 @@ def _render_single_agent_run(run_key: str, current_source: tuple, runs: dict):
                         key=f"agent_dl_pptx_{run_key}",
                     )
 
+        _render_results_chat(run_key, run, values, final, llm_provider)
+
     if st.button("Nouvelle analyse (agent)", key=f"agent_reset_{run_key}"):
         del runs[run_key]
         st.rerun()
+
+
+def _build_analysis_context(values: dict, final: dict) -> str:
+    """Résume l'analyse déjà réalisée pour le prompt de l'assistant conversationnel.
+
+    Pas besoin de tout redonner en détail (les tableaux complets sont déjà
+    dans la table DuckDB, interrogeable par l'assistant) -- juste de quoi
+    situer la conversation : ce qui a été demandé, calculé, et recommandé.
+    """
+    lines = [
+        f"Question posée à l'agent : {values.get('business_question')}",
+        f"Métrique : {values.get('metric_definition') or 'non définie'}",
+    ]
+    weekly = final.get("weekly_retention") or {}
+    if weekly.get("label"):
+        lines.append(f"Résultat construit : {weekly['label']}")
+
+    stats = final.get("statistical_tests") or {}
+    significant = [dim for dim, s in stats.items() if s.get("significant")]
+    if significant:
+        lines.append(f"Dimensions statistiquement significatives (chi², p < 0.05) : {', '.join(significant)}")
+
+    recommendations = final.get("recommendations") or []
+    if recommendations:
+        titles = "; ".join(r.get("title", "") for r in recommendations)
+        lines.append(f"Recommandations formulées : {titles}")
+
+    return "\n".join(lines)
+
+
+def _render_results_chat(run_key: str, run: dict, values: dict, final: dict, llm_provider: str):
+    """
+    Chat de suivi sur une analyse terminée : contrairement à un simple
+    résumé statique, l'assistant peut exécuter de vraies requêtes sur la
+    table DuckDB de l'analyse (voir agent.tools.chat_assistant) pour
+    répondre à des questions qui n'ont pas déjà de réponse toute prête.
+
+    L'historique vit dans run["chat_history"] (donc dans st.session_state,
+    via `runs`) pour survivre aux réexécutions du script -- isolé par
+    run_key comme le reste de l'état d'une analyse.
+    """
+    st.markdown("---")
+    st.subheader("Des questions sur ces résultats ?")
+
+    history = run.setdefault("chat_history", [])
+    for msg in history:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+            if msg.get("sql"):
+                with st.expander("Requête SQL utilisée"):
+                    st.code(msg["sql"], language="sql")
+
+    question = st.chat_input("Ex. : quelle plateforme a le plus baissé ?", key=f"chat_input_{run_key}")
+    if not question:
+        return
+
+    history.append({"role": "user", "content": question})
+    meta = values.get("data_metadata") or {}
+
+    try:
+        with st.spinner("Réflexion en cours..."):
+            result = answer_question(
+                question=question,
+                table_name=meta.get("table_name"),
+                schema=meta.get("schema", []),
+                analysis_context=_build_analysis_context(values, final),
+                history=history[:-1],
+                db_path=meta.get("db_path"),
+                llm_provider=llm_provider,
+            )
+    except UserFacingError as e:
+        history.pop()  # ne pas garder une question sans réponse dans l'historique
+        render_user_facing_error(e.user_message, e.technical_detail, e.severity)
+        return
+    except Exception as e:
+        history.pop()
+        st.error(f"La question n'a pas pu être traitée : {e}")
+        return
+
+    history.append({"role": "assistant", "content": result["answer"], "sql": result.get("sql")})
+    # Cap arbitraire : une conversation très longue n'apporte plus rien au
+    # contexte (voir MAX_HISTORY_TURNS côté prompt) et grossirait la session
+    # indéfiniment. `run` est le même objet que celui stocké dans `runs`
+    # (mutation en place), pas besoin de le réassigner explicitement.
+    run["chat_history"] = history[-40:]
+    st.rerun()
