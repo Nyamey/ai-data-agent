@@ -32,7 +32,7 @@ def render_simple_mode(cleaned_files: list, describe_list: list, query: str, pro
 
     last_result = st.session_state.get("last_result")
     if last_result and last_result.get("source") == current_source:
-        _render_simple_mode_result(last_result, cleaned_files)
+        _render_simple_mode_result(last_result, cleaned_files, describe_list)
 
 
 def _run_simple_mode_analysis(
@@ -128,7 +128,7 @@ def _run_simple_mode_analysis(
             )
 
 
-def _render_simple_mode_result(last_result: dict, cleaned_files: list):
+def _render_simple_mode_result(last_result: dict, cleaned_files: list, describe_list: list):
     st.subheader("Analyse de l'IA")
     st.markdown(last_result["answer"])
 
@@ -155,7 +155,9 @@ def _render_simple_mode_result(last_result: dict, cleaned_files: list):
     )
     dl3.download_button(
         "Rapport complet (Excel)",
-        data=build_excel_report(cleaned_files, last_result["query"], last_result["model_used"], last_result["answer"]),
+        data=build_excel_report(
+            cleaned_files, describe_list, last_result["query"], last_result["model_used"], last_result["answer"],
+        ),
         file_name="rapport_analyse.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=True,

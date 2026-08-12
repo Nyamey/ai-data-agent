@@ -171,17 +171,33 @@ def build_markdown_report(query: str, model_used: str, files: list, analysis_tex
     ])
 
 
-def build_excel_report(files: list, query: str, model_used: str, analysis_text: str) -> bytes:
-    """Génère un classeur Excel en mémoire : une feuille par fichier nettoyé + une feuille d'analyse."""
+def build_excel_report(files: list, describe_list: list, query: str, model_used: str, analysis_text: str) -> bytes:
+    """Génère un classeur Excel en mémoire : pour chaque fichier nettoyé, sa
+    feuille de données suivie d'une feuille de statistiques descriptives
+    (le même `df.describe()` que celui déjà affiché à l'écran -- pas
+    recalculé ici, pour garantir que le fichier téléchargé montre
+    exactement ce que l'utilisateur a déjà vu), puis une feuille d'analyse.
+    """
     wb = Workbook()
     wb.remove(wb.active)
     used_names = set()
 
-    for name, df in files:
+    for (name, df), desc in zip(files, describe_list):
         ws = wb.create_sheet(sanitize_sheet_name(name, used_names))
         for row in dataframe_to_rows(neutralize_formulas(df), index=False, header=True):
             ws.append(row)
         for cell in ws[1]:
+            cell.font = Font(bold=True)
+
+        stem = name.rsplit(".", 1)[0]
+        ws_stats = wb.create_sheet(unique_sheet_title(f"Stats - {stem}", used_names))
+        # openpyxl.dataframe_to_rows(index=True, header=True) insère toujours
+        # une ligne fantôme juste après l'en-tête (le nom de l'index sur sa
+        # propre ligne) -- un artefact de mise en forme, pas une donnée à garder.
+        for i, row in enumerate(dataframe_to_rows(neutralize_formulas(desc), index=True, header=True)):
+            if i != 1:
+                ws_stats.append(row)
+        for cell in ws_stats[1]:
             cell.font = Font(bold=True)
 
     ws_analysis = wb.create_sheet("Analyse")

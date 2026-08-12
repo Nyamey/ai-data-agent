@@ -36,7 +36,7 @@ class FakeAgentGraph:
     """
 
     def __init__(self, row_count=20, id_column="id", excel_path=None, presentation_path=None,
-                 null_counts=None, date_range=None):
+                 null_counts=None, date_range=None, table_name=None, db_path=None):
         self.resumed = False
         self.approval_received = None
         self.row_count = row_count
@@ -45,6 +45,11 @@ class FakeAgentGraph:
         self.presentation_path = presentation_path
         self.null_counts = null_counts or {}
         self.date_range = date_range or {}
+        # table_name/db_path : None par défaut (comme avant l'ajout du
+        # téléchargement des données nettoyées) -- seuls les tests qui
+        # l'exercent explicitement fournissent une vraie table DuckDB.
+        self.table_name = table_name
+        self.db_path = db_path
 
     def _final_values(self):
         """État final complet -- même forme que ce que renverrait le vrai
@@ -94,6 +99,8 @@ class FakeAgentGraph:
                 "id_column": self.id_column,
                 "null_counts": self.null_counts,
                 "date_range": self.date_range,
+                "table_name": self.table_name,
+                "db_path": self.db_path,
             },
         })
 
@@ -192,6 +199,59 @@ def test_agent_mode_single_file_approve_shows_results_and_downloads(monkeypatch,
     assert "Recommandation test" in "".join(m.value for m in at.markdown)
     dl_buttons = [b for b in at.download_button if b.key == "agent_dl_xlsx_0_ventes.csv"]
     assert len(dl_buttons) == 1
+
+
+def test_agent_mode_offers_cleaned_data_download_with_stats(monkeypatch, tmp_path):
+    # Contrairement au test précédent, table_name/db_path pointent ici vers
+    # une vraie table DuckDB : ce test exerce donc pour de vrai le chemin
+    # fetch_dataframe() -> ExcelGenerator.add_cleaned_data() -> to_bytes(),
+    # pas seulement le câblage de l'UI autour d'un chemin de fichier bidon.
+    import duckdb
+
+    db_path = str(tmp_path / "analytics.duckdb")
+    con = duckdb.connect(db_path)
+    con.execute('CREATE TABLE "data_ventes" AS SELECT * FROM (VALUES (1, 10), (2, 20), (3, 30)) t(id, montant)')
+    con.close()
+
+    _patch_graph_factory(monkeypatch, table_name="data_ventes", db_path=db_path)
+    csv_path = _write_csv(tmp_path, "ventes.csv")
+
+    at = _run_harness(monkeypatch, AGENT_HARNESS, [csv_path])
+    at.session_state["agent_trigger_inspect"] = True
+    at.run()
+    at.button(key="agent_approve_0_ventes.csv").click().run()
+
+    assert not at.exception
+    dl_buttons = [b for b in at.download_button if b.key == "agent_dl_cleaned_0_ventes.csv"]
+    assert len(dl_buttons) == 1
+
+    # AppTest n'expose pas les octets réels d'un download_button (.value y
+    # reflète l'état de clic, pas les données) -- on lit donc le classeur mis
+    # en cache dans l'état de session (run["cleaned_data_excel"]), exactement
+    # ce que le bouton sert par ailleurs.
+    import io
+    import openpyxl
+    cleaned_bytes = at.session_state["agent_runs"]["0_ventes.csv"]["cleaned_data_excel"]
+    assert cleaned_bytes[:2] == b"PK"  # signature ZIP (xlsx est une archive ZIP)
+    wb = openpyxl.load_workbook(io.BytesIO(cleaned_bytes))
+    assert "Données nettoyées" in wb.sheetnames
+    assert "Stats - Données nettoyées" in wb.sheetnames
+
+
+def test_agent_mode_cleaned_data_download_absent_without_table_metadata(monkeypatch, tmp_path):
+    # Le faux graphe par défaut (comme avant l'ajout de cette fonctionnalité)
+    # ne fournit ni table_name ni db_path -- le bouton ne doit pas apparaître,
+    # et surtout ne doit pas faire planter le rendu.
+    _patch_graph_factory(monkeypatch)
+    csv_path = _write_csv(tmp_path, "ventes.csv")
+
+    at = _run_harness(monkeypatch, AGENT_HARNESS, [csv_path])
+    at.session_state["agent_trigger_inspect"] = True
+    at.run()
+    at.button(key="agent_approve_0_ventes.csv").click().run()
+
+    assert not at.exception
+    assert not any(b.key == "agent_dl_cleaned_0_ventes.csv" for b in at.download_button)
 
 
 def test_agent_mode_chat_answers_a_followup_question(monkeypatch, tmp_path):

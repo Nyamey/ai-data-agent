@@ -1,4 +1,6 @@
 # agent/output/excel_generator.py — Génération de classeurs Excel
+import io
+
 import openpyxl
 from openpyxl.chart import LineChart, BarChart, Reference
 from openpyxl.styles import Font, PatternFill, Alignment
@@ -72,6 +74,32 @@ class ExcelGenerator:
         """Ajoute un onglet d'analyse de facteur (appelable plusieurs fois, un par dimension)."""
         self._add_sheet_with_data(title, df, chart_type="bar")
     
+    def add_cleaned_data(self, df: pd.DataFrame, title: str = "Données nettoyées"):
+        """Ajoute la donnée nettoyée elle-même, suivie d'une feuille de
+        statistiques descriptives (df.describe()) -- pensé pour un export
+        autonome des données de l'analyse, séparé du rapport de résultats
+        (métrique construite, facteurs, validation, recommandations).
+
+        df.describe() décrit les colonnes numériques par défaut, ou bascule
+        automatiquement sur des statistiques catégorielles (count/unique/
+        top/freq) s'il n'y a aucune colonne numérique -- comportement natif
+        de pandas, pas de cas particulier à gérer ici.
+        """
+        self._add_sheet_with_data(title, df)
+
+        stats_title = unique_sheet_title(f"Stats - {title}", self._used_titles)
+        ws = self.wb.create_sheet(title=stats_title)
+        # openpyxl.dataframe_to_rows(index=True, header=True) insère toujours
+        # une ligne fantôme juste après l'en-tête (le nom de l'index, sur sa
+        # propre ligne) -- un artefact de sa mise en forme, pas une donnée à
+        # garder.
+        for i, row in enumerate(dataframe_to_rows(neutralize_formulas(df.describe()), index=True, header=True)):
+            if i != 1:
+                ws.append(row)
+        for cell in ws[1]:
+            cell.font = self.header_font
+            cell.fill = self.header_fill
+
     def add_validation_checks(self, checks: dict):
         """Ajoute l'onglet validation."""
         ws = self.wb.create_sheet(title=unique_sheet_title("Validation", self._used_titles))
@@ -85,10 +113,20 @@ class ExcelGenerator:
             status = "OK" if value.get("passed") else "ÉCHEC"
             ws.append([key, str(value.get("result", "")), status])
     
-    def save(self, path: str) -> str:
-        """Sauvegarde le classeur et retourne le chemin."""
-        # Supprimer la feuille par défaut
+    def _drop_default_sheet(self):
         if "Sheet" in self.wb.sheetnames:
             del self.wb["Sheet"]
+
+    def save(self, path: str) -> str:
+        """Sauvegarde le classeur sur disque et retourne le chemin."""
+        self._drop_default_sheet()
         self.wb.save(path)
         return path
+
+    def to_bytes(self) -> bytes:
+        """Sérialise le classeur en mémoire -- pour un téléchargement Streamlit
+        direct (`st.download_button`), sans passer par un fichier temporaire."""
+        self._drop_default_sheet()
+        buf = io.BytesIO()
+        self.wb.save(buf)
+        return buf.getvalue()

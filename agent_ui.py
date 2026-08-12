@@ -15,8 +15,10 @@ import streamlit as st
 
 from agent.errors import UserFacingError
 from agent.graph import build_agent_graph
+from agent.output.excel_generator import ExcelGenerator
 from agent.state import AgentState
 from agent.tools.chat_assistant import answer_question
+from agent.tools.data_loader import fetch_dataframe, quote_ident
 from ui_helpers import render_date_range, render_missing_values, render_user_facing_error
 
 # Libellés affichés pendant graph.stream(...) pour que l'utilisateur voie
@@ -437,10 +439,28 @@ def _render_single_agent_run(run_key: str, current_source: tuple, runs: dict, ll
 
         excel_path = final.get("excel_path")
         presentation_path = final.get("presentation_path")
-        if excel_path or presentation_path:
+
+        # Les données nettoyées sont régénérées à la demande (pas par
+        # export_node, qui ne produit que le rapport d'analyse) et mises en
+        # cache dans `run` pour ne pas relire/reconstruire le classeur à
+        # chaque réexécution du script Streamlit tant que ce run est affiché.
+        cleaned_bytes = run.get("cleaned_data_excel")
+        if cleaned_bytes is None and meta.get("table_name"):
+            try:
+                cleaned_df = fetch_dataframe(
+                    f"SELECT * FROM {quote_ident(meta['table_name'])}", db_path=meta.get("db_path"),
+                )
+                cleaned_gen = ExcelGenerator()
+                cleaned_gen.add_cleaned_data(cleaned_df, title="Données nettoyées")
+                cleaned_bytes = cleaned_gen.to_bytes()
+                run["cleaned_data_excel"] = cleaned_bytes
+            except Exception:
+                cleaned_bytes = None
+
+        if excel_path or presentation_path or cleaned_bytes:
             st.markdown("---")
             st.subheader("Livrables")
-            d1, d2 = st.columns(2)
+            d1, d2, d3 = st.columns(3)
             if excel_path and os.path.exists(excel_path):
                 with open(excel_path, "rb") as f:
                     d1.download_button(
@@ -461,6 +481,15 @@ def _render_single_agent_run(run_key: str, current_source: tuple, runs: dict, ll
                         use_container_width=True,
                         key=f"agent_dl_pptx_{run_key}",
                     )
+            if cleaned_bytes:
+                d3.download_button(
+                    "Télécharger les données nettoyées (Excel)",
+                    cleaned_bytes,
+                    file_name="donnees_nettoyees.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True,
+                    key=f"agent_dl_cleaned_{run_key}",
+                )
 
         _render_results_chat(run_key, run, values, final, llm_provider)
 

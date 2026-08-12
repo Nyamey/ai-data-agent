@@ -94,6 +94,17 @@ def test_neutralize_formulas_prefixes_dangerous_cells():
     assert out["nom"].iloc[3] == "Alice"
 
 
+def test_neutralize_formulas_prefixes_dangerous_column_headers():
+    # Régression : les en-têtes de colonnes viennent du CSV téléversé au
+    # même titre que les cellules -- une première version de la fonction ne
+    # protégeait que les valeurs, laissant un nom de colonne
+    # `=HYPERLINK(...)` réexporté tel quel.
+    df = pd.DataFrame({'=HYPERLINK("http://evil")': [1, 2], "colonne_normale": [3, 4]})
+    out = neutralize_formulas(df)
+    assert out.columns[0].startswith("'=")
+    assert out.columns[1] == "colonne_normale"
+
+
 def test_sanitize_sheet_name_truncates_and_dedupes():
     used = set()
     name1 = sanitize_sheet_name("a" * 40 + ".csv", used)
@@ -127,9 +138,28 @@ def test_build_markdown_report_contains_key_sections():
 
 def test_build_excel_report_produces_valid_workbook():
     files = [("f1.csv", pd.DataFrame({"a": [1, 2]})), ("f2.csv", pd.DataFrame({"b": [3, 4]}))]
-    data = build_excel_report(files, "question", "model", "analyse")
+    describe_list = [df.describe() for _, df in files]
+    data = build_excel_report(files, describe_list, "question", "model", "analyse")
     assert data[:2] == b"PK"  # signature ZIP (xlsx est une archive ZIP)
     assert len(data) > 0
+
+
+def test_build_excel_report_includes_a_stats_sheet_per_file():
+    import io
+    import openpyxl
+
+    files = [("ventes.csv", pd.DataFrame({"montant": [10, 20, 30]}))]
+    describe_list = [df.describe() for _, df in files]
+    data = build_excel_report(files, describe_list, "question", "model", "analyse")
+
+    wb = openpyxl.load_workbook(io.BytesIO(data))
+    assert "Stats - ventes" in wb.sheetnames
+    ws = wb["Stats - ventes"]
+    rows = list(ws.iter_rows(values_only=True))
+    # Ni ligne fantôme (artefact dataframe_to_rows) ni doublon d'en-tête :
+    # la deuxième ligne doit être la première vraie statistique ("count").
+    assert rows[1][0] == "count"
+    assert rows[1][1] == 3.0
 
 
 def test_build_csv_export_single_file_returns_csv():

