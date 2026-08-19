@@ -1,4 +1,4 @@
-# agent/nodes/export.py — Nœud 8 : Export Excel/PowerPoint
+# agent/nodes/export.py : nœud 8, export Excel/PowerPoint
 from datetime import datetime
 from pathlib import Path
 from agent.state import AgentState, AnalysisStatus
@@ -14,8 +14,8 @@ def export_node(state: AgentState) -> dict:
 
     Génère les livrables Excel et PowerPoint à partir des résultats réels de
     l'agent. execute_query() (utilisée par build/test pour l'affichage) ne
-    renvoie que du markdown -- impropre à openpyxl/python-pptx -- donc cette
-    étape ré-exécute les requêtes conservées par build_node/test_node pour
+    renvoie que du markdown, impropre à openpyxl/python-pptx : cette
+    étape ré-exécute donc les requêtes conservées par build_node/test_node pour
     obtenir de vrais DataFrames, avant de vérifier la cohérence des deux
     fichiers générés.
 

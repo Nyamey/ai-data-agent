@@ -1,4 +1,4 @@
-# tests/test_graph_structure.py — Assemblage du graphe LangGraph (structure, pas d'exécution LLM)
+# tests/test_graph_structure.py : assemblage du graphe LangGraph (structure, pas d'exécution LLM)
 from agent.graph import build_agent_graph
 
 

@@ -1,4 +1,4 @@
-# tests/test_nodes_pipeline.py — Nœuds build/test/validate/approval (pas de LLM)
+# tests/test_nodes_pipeline.py : nœuds build/test/validate/approval (pas de LLM)
 from agent.nodes.approval import approval_check_node, format_inspection_summary
 from agent.nodes.build import build_node
 from agent.nodes.inspection import inspection_node

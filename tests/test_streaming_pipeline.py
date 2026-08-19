@@ -1,4 +1,4 @@
-# tests/test_streaming_pipeline.py — Déclenchement du pipeline de streaming
+# tests/test_streaming_pipeline.py : déclenchement du pipeline de streaming
 #
 # Le graphe agent (LLM) est entièrement remplacé par un faux graphe : ces
 # tests vérifient la DÉCISION de déclenchement (AnomalyDetector -> lance ou

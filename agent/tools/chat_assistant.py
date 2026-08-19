@@ -1,4 +1,4 @@
-# agent/tools/chat_assistant.py — Assistant conversationnel sur les résultats d'une analyse
+# agent/tools/chat_assistant.py : assistant conversationnel sur les résultats d'une analyse
 #
 # Permet à l'utilisateur de poser des questions de suivi une fois l'analyse
 # terminée (« pourquoi mobile est-il en tête ? », « et pour le mois dernier
@@ -9,13 +9,13 @@ import json
 from agent.llm.config import extract_json, get_llm_response
 from agent.tools.data_loader import ensure_read_only_query, fetch_dataframe
 
-# Cap sur le nombre de lignes réinjectées dans le prompt du second appel LLM
-# -- une requête qui renvoie des milliers de lignes n'aiderait pas plus la
+# Cap sur le nombre de lignes réinjectées dans le prompt du second appel LLM :
+# une requête qui renvoie des milliers de lignes n'aiderait pas plus la
 # réponse et gonflerait inutilement le prompt (coût, latence, risque de
 # dépasser la fenêtre de contexte des modèles gratuits).
 MAX_RESULT_ROWS = 200
 
-# Nombre de tours d'historique conservés dans le prompt -- suffisant pour
+# Nombre de tours d'historique conservés dans le prompt, suffisant pour
 # des questions de suivi ("et sur mobile ?" après "quelle plateforme domine
 # ?"), sans faire grossir le prompt indéfiniment sur une longue conversation.
 MAX_HISTORY_TURNS = 6
@@ -68,8 +68,8 @@ Résultat :
 
 Formule maintenant une réponse claire et concise en français, basée
 uniquement sur ce résultat. Si le résultat indique une erreur, explique-le
-simplement à l'utilisateur et propose de reformuler la question -- ne
-répète jamais le message d'erreur technique tel quel.
+simplement à l'utilisateur et propose de reformuler la question, sans
+jamais répéter le message d'erreur technique tel quel.
 """
 
 
@@ -90,8 +90,8 @@ def answer_question(
     Suit le même patron « JSON + extract_json() » que framing_node/
     recommend_node plutôt que le tool-calling natif des API LLM (le
     paramètre "tools" n'est pas supporté de façon fiable par tous les
-    modèles gratuits de la cascade OpenRouter) -- ce patron, lui, fonctionne
-    identiquement quel que soit le provider/modèle utilisé.
+    modèles gratuits de la cascade OpenRouter), ce patron fonctionne quant à
+    lui identiquement quel que soit le provider/modèle utilisé.
 
     Le SQL généré par le LLM passe par ensure_read_only_query() avant toute
     exécution : une question utilisateur est une entrée non fiable au même
@@ -108,13 +108,13 @@ def answer_question(
         llm_provider: Provider LLM à utiliser (par défaut DEFAULT_LLM_PROVIDER)
 
     Returns:
-        {"answer": str, "sql": str | None} -- `sql` est renseigné seulement
+        {"answer": str, "sql": str | None} : `sql` est renseigné seulement
         si une requête a effectivement été exécutée (affichable à l'utilisateur
         pour la transparence).
 
     Raises:
         UserFacingError (LLMUnavailableError) : si aucun provider LLM
-        configuré n'a pu répondre -- laissée remonter telle quelle pour que
+        configuré n'a pu répondre, laissée remonter telle quelle pour que
         l'appelant l'affiche avec le même traitement que le reste de l'app.
     """
     prompt = _build_prompt(question, table_name, schema, analysis_context, history)
@@ -143,7 +143,7 @@ def answer_question(
     except Exception as e:
         # Le message technique part dans le prompt du second appel, pas
         # directement à l'écran : le LLM le reformule en explication simple
-        # (voir _build_followup_prompt) -- même philosophie que
+        # (voir _build_followup_prompt), même philosophie que
         # UserFacingError, appliquée ici via le LLM plutôt qu'un message figé.
         result_text = f"Erreur lors de l'exécution de la requête : {e}"
 

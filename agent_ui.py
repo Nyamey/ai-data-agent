@@ -1,4 +1,4 @@
-# agent_ui.py — Mode « Agent complet » (8 étapes) de l'interface Streamlit
+# agent_ui.py : mode « Agent complet » (8 étapes) de l'interface Streamlit
 #
 # Séparé de app.py (qui garde la coquille de page + le mode « Analyse
 # simple ») parce que ce sous-système a sa propre logique conséquente :
@@ -67,7 +67,7 @@ def render_agent_mode(cleaned_files: list, query: str, provider: str, current_so
     - Jointure : les fichiers sont chargés dans une seule table DuckDB
       croisée (voir agent.tools.data_loader.load_joined_data) selon un
       arbre de jointure configuré par l'utilisateur, puis analysés comme un
-      cycle unique -- build/test/validate ne voient qu'une table, peu
+      cycle unique : build/test/validate ne voient qu'une table, peu
       importe son origine.
 
     Le graphe est compilé avec `interrupt_before=["approval"]` : il s'arrête
@@ -126,13 +126,13 @@ def render_agent_mode(cleaned_files: list, query: str, provider: str, current_so
 def _render_join_config_ui(cleaned_files: list) -> dict:
     """
     Affiche les sélecteurs de configuration de la jointure et renvoie le
-    join_spec construit (indexé par nom de fichier -- traduit en chemins
+    join_spec construit (indexé par nom de fichier, traduit en chemins
     réels par _start_joint_agent_inspection juste avant de lancer l'agent).
 
     Pas de détection automatique de clé de jointure (trop fragile) :
     l'utilisateur choisit un fichier racine, puis pour chaque autre fichier
     (dans l'ordre de téléversement), à quel fichier déjà inclus il se
-    rattache et sur quelles colonnes -- ça construit un arbre de jointure
+    rattache et sur quelles colonnes. Ça construit un arbre de jointure
     connexe, sans limite sur le nombre de fichiers.
     """
     file_names = [name for name, _ in cleaned_files]
@@ -179,7 +179,7 @@ def _write_session_csv(df: pd.DataFrame, name: str, session_dir: str) -> str:
 
     `name` porte déjà l'extension d'origine (ex. "commandes.csv") : on la
     retire avant de rajouter la nôtre, sinon le fichier écrit se retrouve en
-    ".csv.csv" -- ce qui, en mode jointure, pollue aussi le préfixe de
+    ".csv.csv", ce qui, en mode jointure, pollue aussi le préfixe de
     colonne dérivé du nom de table (ex. "data_commandes_csv__id" au lieu de
     "data_commandes__id").
     """
@@ -256,11 +256,11 @@ def _run_inspection_graph(
     (mono-fichier vs jointure) : au-delà de la construction de l'état initial,
     les deux lancent le graphe et gèrent ses échecs de façon identique.
 
-    Distingue UserFacingError (agent/errors.py -- un message déjà pensé pour
+    Distingue UserFacingError (agent/errors.py : un message déjà pensé pour
     l'utilisateur : quota LLM épuisé, jointure mal configurée...) des autres
     exceptions, pour que _render_single_agent_run() l'affiche proprement
     (message clair, détail technique relégué aux logs) plutôt que de
-    laisser passer une trace brute -- voir render_user_facing_error().
+    laisser passer une trace brute (voir render_user_facing_error()).
     """
     try:
         with st.spinner(spinner_text):
@@ -274,7 +274,7 @@ def _run_inspection_graph(
     except UserFacingError as e:
         # getattr() en défense en profondeur : un redéploiement Streamlit
         # Cloud a déjà surpris une instance encore sur l'ancienne classe
-        # d'exception (sans ces attributs) pendant la bascule -- jamais une
+        # d'exception (sans ces attributs) pendant la bascule, jamais une
         # AttributeError ici, même dans ce cas transitoire.
         runs[run_key] = {
             "source": current_source,
@@ -422,7 +422,7 @@ def _render_single_agent_run(run_key: str, current_source: tuple, runs: dict, ll
             st.subheader("Validation")
             for check_name, check in checks.items():
                 status = "OK" if check.get("passed") else "ÉCHEC"
-                with st.expander(f"{check_name.replace('_', ' ').capitalize()} — {status}"):
+                with st.expander(f"{check_name.replace('_', ' ').capitalize()} : {status}"):
                     st.markdown(str(check.get("result")))
 
         recommendations = final.get("recommendations") or []
@@ -502,7 +502,7 @@ def _build_analysis_context(values: dict, final: dict) -> str:
     """Résume l'analyse déjà réalisée pour le prompt de l'assistant conversationnel.
 
     Pas besoin de tout redonner en détail (les tableaux complets sont déjà
-    dans la table DuckDB, interrogeable par l'assistant) -- juste de quoi
+    dans la table DuckDB, interrogeable par l'assistant), juste de quoi
     situer la conversation : ce qui a été demandé, calculé, et recommandé.
     """
     lines = [
@@ -534,7 +534,7 @@ def _render_results_chat(run_key: str, run: dict, values: dict, final: dict, llm
     répondre à des questions qui n'ont pas déjà de réponse toute prête.
 
     L'historique vit dans run["chat_history"] (donc dans st.session_state,
-    via `runs`) pour survivre aux réexécutions du script -- isolé par
+    via `runs`) pour survivre aux réexécutions du script, isolé par
     run_key comme le reste de l'état d'une analyse.
     """
     st.markdown("---")

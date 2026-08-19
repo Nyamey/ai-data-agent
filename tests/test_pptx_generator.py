@@ -1,4 +1,4 @@
-# tests/test_pptx_generator.py — Génération de présentations PowerPoint
+# tests/test_pptx_generator.py : génération de présentations PowerPoint
 #
 # Déjà exercé indirectement par tests/test_consistency_check.py, mais avec
 # des findings/validation/recommendations presque vides -- la plupart du

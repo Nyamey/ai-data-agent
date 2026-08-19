@@ -1,4 +1,4 @@
-# agent/nodes/test.py — Nœud 4 : Tests des facteurs explicatifs
+# agent/nodes/test.py : nœud 4, tests des facteurs explicatifs
 from scipy import stats as scipy_stats
 from agent.state import AgentState, AnalysisStatus
 from agent.tools.data_loader import fetch_dataframe, quote_ident
@@ -32,7 +32,7 @@ def test_node(state: AgentState) -> dict:
 
     # table/id_col/colonnes de dimension viennent tous du schéma du CSV
     # téléversé (non fiable) : quote_ident() est requis à chaque
-    # interpolation SQL -- voir sa docstring dans agent/tools/data_loader.py.
+    # interpolation SQL, voir sa docstring dans agent/tools/data_loader.py.
     table = quote_ident(state.data_metadata.get("table_name", "data"))
     db_path = state.data_metadata.get("db_path")
     id_col = state.data_metadata.get("id_column")
@@ -68,7 +68,7 @@ def test_node(state: AgentState) -> dict:
                 driver_results.append({
                     "dimension": col,
                     "skipped": (
-                        f"{len(df)} catégories distinctes (plus de {MAX_DIMENSION_CATEGORIES}) -- "
+                        f"{len(df)} catégories distinctes (plus de {MAX_DIMENSION_CATEGORIES}), "
                         "trop fragmenté pour être une dimension de comparaison pertinente, exclu du test."
                     ),
                 })

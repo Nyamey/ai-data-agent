@@ -1,4 +1,4 @@
-# test_llm.py — Teste que l'API LLM fonctionne
+# test_llm.py : teste que l'API LLM fonctionne
 import os
 from dotenv import load_dotenv
 

@@ -1,4 +1,4 @@
-# simple_mode_ui.py — Mode « Analyse simple » (LLM en une passe)
+# simple_mode_ui.py : mode « Analyse simple » (LLM en une passe)
 #
 # Séparé de app.py pour la même raison qu'agent_ui.py : un sous-système
 # autonome (déclenchement de l'analyse, cascade de repli entre modèles
@@ -52,7 +52,7 @@ def _run_simple_mode_analysis(
             """)
         data_summary = "\n".join(summaries)
 
-        # Choisir la liste de modèles à essayer selon le provider -- mêmes
+        # Choisir la liste de modèles à essayer selon le provider, mêmes
         # constantes que le mode agent (agent/llm/config.py), pour ne pas
         # entretenir deux cascades de repli séparées qui pourraient diverger.
         if "Groq" in provider:

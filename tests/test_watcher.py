@@ -1,4 +1,4 @@
-# tests/test_watcher.py — Détection de nouveaux fichiers (watchdog)
+# tests/test_watcher.py : détection de nouveaux fichiers (watchdog)
 #
 # start_watching() (boucle infinie + gestion de Ctrl+C) n'est pas testée --
 # trop coûteuse à vérifier utilement sans threading réel. DataFileHandler.

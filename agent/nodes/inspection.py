@@ -1,4 +1,4 @@
-# agent/nodes/inspection.py — Nœud 2 : Inspection des données
+# agent/nodes/inspection.py : nœud 2, inspection des données
 from agent.state import AgentState, AnalysisStatus
 from agent.tools.data_loader import load_data, load_joined_data
 
@@ -20,7 +20,7 @@ def inspection_node(state: AgentState) -> dict:
     state.status = AnalysisStatus.INSPECTION
 
     # Mode jointure (plusieurs fichiers croisés) si join_spec est renseigné,
-    # sinon comportement normal à un seul fichier -- voir agent/state.py.
+    # sinon comportement normal à un seul fichier, voir agent/state.py.
     if state.join_spec:
         metadata = load_joined_data(state.data_paths, state.join_spec, db_path=state.db_path)
     else:

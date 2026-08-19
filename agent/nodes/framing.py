@@ -1,4 +1,4 @@
-# agent/nodes/framing.py — Nœud 1 : Cadrage de l'analyse
+# agent/nodes/framing.py : nœud 1, cadrage de l'analyse
 import json
 from agent.state import AgentState, AnalysisStatus
 from agent.llm.config import get_llm_response, extract_json

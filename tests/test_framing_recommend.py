@@ -1,4 +1,4 @@
-# tests/test_framing_recommend.py — framing_node/recommend_node de bout en bout
+# tests/test_framing_recommend.py : framing_node/recommend_node de bout en bout
 #
 # framing_node et recommend_node appellent un LLM ; jusqu'ici ils n'étaient
 # couverts par aucun test automatisé (voir README) car les vérifier

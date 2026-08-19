@@ -1,4 +1,4 @@
-# tests/test_consistency_check.py — Cohérence des chiffres Excel <-> PowerPoint
+# tests/test_consistency_check.py : cohérence des chiffres Excel <-> PowerPoint
 #
 # verify_consistency() compare des nombres à la granularité d'un "run" pptx
 # entier (pas d'extraction de nombres au sein d'une phrase) : ces tests

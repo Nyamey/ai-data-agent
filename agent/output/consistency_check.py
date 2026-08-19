@@ -1,4 +1,4 @@
-# agent/output/consistency_check.py — Vérifie la cohérence Excel ↔ Présentation
+# agent/output/consistency_check.py : vérifie la cohérence Excel ↔ Présentation
 import openpyxl
 from pptx import Presentation
 

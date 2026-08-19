@@ -1,4 +1,4 @@
-# agent/streaming/anomaly_detector.py — Détection d'anomalies simple
+# agent/streaming/anomaly_detector.py : détection d'anomalies simple
 import numpy as np
 from collections import deque
 

@@ -1,4 +1,4 @@
-# ui_helpers.py — Widgets d'affichage Streamlit partagés entre les deux
+# ui_helpers.py : widgets d'affichage Streamlit partagés entre les deux
 # modes de l'app (simple et agent), pour éviter que app.py et agent_ui.py
 # ne s'importent l'un l'autre.
 import pandas as pd
@@ -36,10 +36,10 @@ def render_user_facing_error(user_message: str, technical_detail: str = None, se
 
     `severity` distingue deux situations qui ne se présentent pas pareil :
     - "warning" : temporaire, pas la faute de l'utilisateur (ex. quota LLM
-      épuisé) -- st.warning() (jaune) communique "réessayez plus tard", pas
+      épuisé), st.warning() (jaune) communique "réessayez plus tard", pas
       un blocage.
     - "error" : nécessite une action de l'utilisateur pour continuer (ex.
-      jointure mal configurée) -- st.error() (rouge) attire l'attention sur
+      jointure mal configurée), st.error() (rouge) attire l'attention sur
       ce qui doit être corrigé.
 
     Dans les deux cas, le détail technique (traces litellm/DuckDB, SQL

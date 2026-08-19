@@ -1,4 +1,4 @@
-# agent/output/pptx_generator.py — Génération de présentations PowerPoint
+# agent/output/pptx_generator.py : génération de présentations PowerPoint
 from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
@@ -89,7 +89,7 @@ class PresentationGenerator:
         
         # Slide 3 : Validation
         validation_points = [
-            f"{k}: {'OK' if v.get('passed') else 'ÉCHEC'} — {v.get('result', '')}"
+            f"{k} : {'OK' if v.get('passed') else 'ÉCHEC'} ({v.get('result', '')})"
             for k, v in validation.items()
         ]
         self._add_findings_slide("Validation", validation_points)
@@ -111,7 +111,7 @@ class PresentationGenerator:
         txBox = slide.shapes.add_textbox(Inches(1), Inches(3), Inches(11), Inches(2))
         tf = txBox.text_frame
         p = tf.paragraphs[0]
-        p.text = "Merci — Questions ?"
+        p.text = "Merci ! Des questions ?"
         p.font.size = Pt(36)
         p.font.bold = True
         

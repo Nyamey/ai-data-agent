@@ -1,4 +1,4 @@
-# agent/nodes/approval.py — Point de contrôle humain
+# agent/nodes/approval.py : point de contrôle humain
 from agent.state import AgentState, AnalysisStatus
 
 
@@ -24,7 +24,7 @@ def format_inspection_summary(state: AgentState) -> str:
             f"  - Valeurs manquantes : {meta['null_counts']}",
             f"  - Plage de dates : {meta['date_range']}",
         ]
-        # Présent uniquement en mode jointure (agent.tools.data_loader.load_joined_data) --
+        # Présent uniquement en mode jointure (agent.tools.data_loader.load_joined_data) :
         # signale une jointure qui a probablement échoué (mauvaises colonnes
         # choisies) avant de gaspiller le reste de l'analyse dessus.
         if meta.get("join_warning"):
@@ -46,7 +46,7 @@ def approval_check_node(state: AgentState) -> dict:
     pas via un `input()` bloquant à l'intérieur. C'est à l'appelant de :
       1. Lire l'état interrompu (`graph.get_state(config)`) et afficher le
          résumé (`format_inspection_summary`) pour recueillir la décision
-         humaine -- un `input()` dans un terminal, un bouton dans une UI
+         humaine, un `input()` dans un terminal, un bouton dans une UI
          web, peu importe.
       2. Appliquer la décision avec
          `graph.update_state(config, {"approval_received": bool})`.

@@ -1,4 +1,4 @@
-# tests/test_state.py — Schéma d'état de l'agent
+# tests/test_state.py : schéma d'état de l'agent
 from agent.state import AgentState, AnalysisStatus
 
 

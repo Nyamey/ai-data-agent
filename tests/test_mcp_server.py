@@ -1,4 +1,4 @@
-# tests/test_mcp_server.py — Serveur MCP DuckDB : restriction en lecture seule
+# tests/test_mcp_server.py : serveur MCP DuckDB, restriction en lecture seule
 #
 # execute_query() est exposée à des assistants IA externes (Claude Desktop,
 # VS Code Copilot...) -- ces tests couvrent le garde-fou qui l'empêche

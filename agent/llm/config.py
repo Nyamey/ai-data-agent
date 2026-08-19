@@ -1,4 +1,4 @@
-# agent/llm/config.py — Configuration LLM avec fallback automatique
+# agent/llm/config.py : configuration LLM avec repli automatique
 import json
 import os
 import re
@@ -16,7 +16,7 @@ def extract_json(text: str) -> dict:
 
     Malgré la consigne "réponds UNIQUEMENT en JSON", beaucoup de modèles
     (surtout les plus petits/gratuits) ajoutent une phrase d'introduction ou
-    enrobent la réponse dans un bloc ```json ... ``` -- un simple json.loads()
+    enrobent la réponse dans un bloc ```json ... ```, un simple json.loads()
     échoue alors sur du JSON pourtant valide une fois isolé. Essaie plusieurs
     stratégies avant d'abandonner.
     """
@@ -48,13 +48,13 @@ DEFAULT_MODELS = {
     "mistral": "mistral/mistral-large-latest",
 }
 
-# Modèles gratuits OpenRouter essayés en cascade si l'un est rate-limité.
-# Ça aide contre une panne ou un rate-limit propre à UN modèle -- mais
-# OpenRouter applique aussi un plafond quotidien de requêtes gratuites au
-# niveau du COMPTE ("free-models-per-day"), partagé par tous les modèles
+# Modèles gratuits OpenRouter essayés en cascade si l'un atteint sa limite
+# de requêtes. Ça aide contre une panne ou une limite propre à UN modèle,
+# mais OpenRouter applique aussi un plafond quotidien de requêtes gratuites
+# au niveau du COMPTE ("free-models-per-day"), partagé par tous les modèles
 # :free : une fois ce plafond atteint, les trois échouent identiquement et
 # aucune cascade de modèles n'y changera rien tant qu'il n'est pas
-# réinitialisé (ou des crédits ajoutés) -- d'où le repli vers un autre
+# réinitialisé (ou des crédits ajoutés), d'où le repli vers un autre
 # provider ci-dessous, seul recours dans ce cas précis.
 OPENROUTER_FALLBACK_MODELS = [
     "openrouter/openai/gpt-oss-20b:free",
@@ -72,7 +72,7 @@ class LLMUnavailableError(UserFacingError):
     """Levée quand aucun provider LLM configuré n'a pu répondre.
 
     Un quota épuisé ou une panne de provider est temporaire et n'est pas la
-    faute de l'utilisateur -- severity="warning" (voir UserFacingError)
+    faute de l'utilisateur : severity="warning" (voir UserFacingError)
     pour que l'UI l'affiche comme "réessayez plus tard", pas comme un
     blocage nécessitant une action.
     """
@@ -95,7 +95,7 @@ def _try_provider(provider: str, messages: list[dict], temperature: float, max_t
 
     Returns:
         (texte, None) en cas de succès.
-        (None, None) si le provider n'a pas de clé API configurée -- pas un
+        (None, None) si le provider n'a pas de clé API configurée : pas un
         échec à proprement parler, juste une option indisponible.
         (None, dernière_exception) si tous les modèles de ce provider ont échoué.
     """
@@ -135,7 +135,7 @@ def get_llm_response(
     Args:
         messages: Liste de messages au format [{"role": "user", "content": "..."}]
         provider: Provider ("groq", "gemini", "openrouter", "mistral")
-        model: Modèle spécifique à utiliser pour le provider demandé (optionnel) --
+        model: Modèle spécifique à utiliser pour le provider demandé (optionnel),
             n'affecte pas les modèles utilisés par les providers de repli
         temperature: 0 = précis, 1 = créatif
         max_tokens: Longueur maximale de la réponse
@@ -174,7 +174,7 @@ def get_llm_response(
 
     if not errors:
         # Message pour l'utilisateur final de l'app déployée : il ne peut de
-        # toute façon pas configurer de clé API lui-même -- cette instruction
+        # toute façon pas configurer de clé API lui-même. Cette instruction
         # ne concerne que l'administrateur, reléguée dans technical_detail.
         raise LLMUnavailableError(
             "Le service d'analyse IA n'est pas configuré pour le moment. "

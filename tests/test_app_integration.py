@@ -1,4 +1,4 @@
-# tests/test_app_integration.py — Intégration Streamlit de bout en bout
+# tests/test_app_integration.py : intégration Streamlit de bout en bout
 #
 # Contrairement aux tests unitaires (agent_ui.py, simple_mode_ui.py testés
 # indirectement ailleurs via leurs briques), ceux-ci pilotent réellement les

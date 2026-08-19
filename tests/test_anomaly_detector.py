@@ -1,4 +1,4 @@
-# tests/test_anomaly_detector.py — Détection d'anomalies par z-score
+# tests/test_anomaly_detector.py : détection d'anomalies par z-score
 from agent.streaming.anomaly_detector import AnomalyDetector
 
 

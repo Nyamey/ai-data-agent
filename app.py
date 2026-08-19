@@ -1,4 +1,4 @@
-# app.py — Point d'entrée Streamlit : coquille de page (config, barre
+# app.py : point d'entrée Streamlit, coquille de page (config, barre
 # latérale, téléversement/nettoyage) qui délègue chaque mode d'analyse à
 # son propre module (simple_mode_ui.py, agent_ui.py).
 import os
@@ -55,11 +55,11 @@ with st.sidebar:
         st.caption("Aucune analyse pour l'instant.")
     else:
         for entry in reversed(st.session_state["history"]):
-            with st.expander(f"{entry['timestamp']} — {entry['query'][:40]}"):
+            with st.expander(f"{entry['timestamp']} · {entry['query'][:40]}"):
                 st.caption(f"Modèle : {entry['model_used']} · fichiers : {', '.join(entry['file_names'])}")
                 st.markdown(entry["answer"])
 
-# Zone principale — deux colonnes
+# Zone principale : deux colonnes
 col1, col2 = st.columns([1, 2])
 
 with col1:
@@ -96,7 +96,7 @@ with col2:
     st.header("Résultats")
 
     if uploaded_files:
-        # Charger, nettoyer et prétraiter chaque fichier — une erreur sur un
+        # Charger, nettoyer et prétraiter chaque fichier : une erreur sur un
         # fichier (encodage/format invalide) ne doit pas faire échouer les autres.
         cleaned_files = []  # list of (name, df)
         # Liste positionnelle (pas un dict par nom : deux fichiers peuvent
@@ -146,7 +146,7 @@ with col2:
                 st.dataframe(file_describe, use_container_width=True)
 
         # Le résultat affiché ne doit rester valide que pour les mêmes fichiers,
-        # le même provider ET la même question — sinon un simple changement de
+        # le même provider ET la même question, sinon un simple changement de
         # question sans reclic sur "Lancer l'analyse" afficherait une réponse
         # qui ne correspond plus à ce qui est tapé à l'écran.
         current_source = (tuple(sorted((f.name, f.size) for f in uploaded_files)), provider, query)

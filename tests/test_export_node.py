@@ -1,4 +1,4 @@
-# tests/test_export_node.py — Nœud 8 : export Excel/PowerPoint
+# tests/test_export_node.py : nœud 8, export Excel/PowerPoint
 #
 # export_node n'avait jamais été testé directement (0 % de couverture avant
 # ce fichier) : il n'était exercé que par des vérifications manuelles hors

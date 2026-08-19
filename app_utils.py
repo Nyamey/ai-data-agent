@@ -1,4 +1,4 @@
-# app_utils.py — Fonctions pures de l'application Streamlit (nettoyage,
+# app_utils.py : fonctions pures de l'application Streamlit (nettoyage,
 # exports, sécurité), séparées de app.py pour être testables sans
 # dépendre du runtime Streamlit (app.py exécute du code au niveau module).
 import csv
@@ -158,7 +158,7 @@ def build_markdown_report(query: str, model_used: str, files: list, analysis_tex
     """Assemble un rapport Markdown autonome (question + données + analyse)."""
     files_desc = "\n".join(f"- {name} : {len(df)} lignes" for name, df in files)
     return "\n".join([
-        f"# Rapport d'analyse — {timestamp}",
+        f"# Rapport d'analyse : {timestamp}",
         "",
         f"**Question :** {query}",
         f"**Modèle utilisé :** {model_used}",
@@ -174,7 +174,7 @@ def build_markdown_report(query: str, model_used: str, files: list, analysis_tex
 def build_excel_report(files: list, describe_list: list, query: str, model_used: str, analysis_text: str) -> bytes:
     """Génère un classeur Excel en mémoire : pour chaque fichier nettoyé, sa
     feuille de données suivie d'une feuille de statistiques descriptives
-    (le même `df.describe()` que celui déjà affiché à l'écran -- pas
+    (le même `df.describe()` que celui déjà affiché à l'écran, pas
     recalculé ici, pour garantir que le fichier téléchargé montre
     exactement ce que l'utilisateur a déjà vu), puis une feuille d'analyse.
     """
@@ -193,7 +193,7 @@ def build_excel_report(files: list, describe_list: list, query: str, model_used:
         ws_stats = wb.create_sheet(unique_sheet_title(f"Stats - {stem}", used_names))
         # openpyxl.dataframe_to_rows(index=True, header=True) insère toujours
         # une ligne fantôme juste après l'en-tête (le nom de l'index sur sa
-        # propre ligne) -- un artefact de mise en forme, pas une donnée à garder.
+        # propre ligne), un artefact de mise en forme, pas une donnée à garder.
         for i, row in enumerate(dataframe_to_rows(neutralize_formulas(desc), index=True, header=True)):
             if i != 1:
                 ws_stats.append(row)
@@ -229,7 +229,7 @@ def build_csv_export(files: list) -> tuple[bytes, str, str]:
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for name, df in files:
             # os.path.basename() écarte tout composant de chemin qu'un nom de
-            # fichier téléversé pourrait contenir (ex. "../../evil.csv") --
+            # fichier téléversé pourrait contenir (ex. "../../evil.csv") :
             # l'entrée ZIP ne doit jamais pouvoir pointer hors du dossier
             # d'extraction attendu par qui l'ouvrira.
             base = re.sub(r"\.csv$", "", os.path.basename(name), flags=re.IGNORECASE)
@@ -281,7 +281,7 @@ def build_pptx_report(query: str, model_used: str, files: list, analysis_text: s
     tf2.paragraphs[0].text = query
     tf2.paragraphs[0].font.size = Pt(20)
     p3 = tf2.add_paragraph()
-    p3.text = f"{timestamp} — {model_used}"
+    p3.text = f"{timestamp} · {model_used}"
     p3.font.size = Pt(14)
 
     slide2 = prs.slides.add_slide(blank)

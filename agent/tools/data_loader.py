@@ -1,4 +1,4 @@
-# agent/tools/data_loader.py — Chargement et inspection de données avec DuckDB
+# agent/tools/data_loader.py : chargement et inspection de données avec DuckDB
 import re
 import duckdb
 import os
@@ -16,7 +16,7 @@ ID_COLUMN_PATTERN = re.compile(r"(^id$)|(_id$)|(^id_)", re.IGNORECASE)
 # .replace() historique, tout le reste doit être neutralisé aussi.
 UNSAFE_TABLE_CHARS = re.compile(r"[^A-Za-z0-9_]")
 
-# Utilisés par ensure_read_only_query() -- voir sa docstring. Partagé par le
+# Utilisés par ensure_read_only_query(), voir sa docstring. Partagé par le
 # serveur MCP (mcp_server/server.py) et l'assistant conversationnel
 # (agent/tools/chat_assistant.py) : les deux exécutent du SQL généré par un
 # tiers non fiable (un client MCP externe, ou le LLM lui-même à partir d'une
@@ -32,7 +32,7 @@ _READ_ONLY_SQL_START = re.compile(r"^\s*(SELECT|WITH|DESCRIBE|SHOW|EXPLAIN)\b", 
 def ensure_read_only_query(sql: str) -> None:
     """Lève ValueError si `sql` n'est pas une simple requête de lecture.
 
-    Deux vérifications : une seule instruction (pas de `;` -- empêche
+    Deux vérifications : une seule instruction (pas de `;`, empêche
     d'enchaîner une requête de lecture anodine avec une écriture cachée
     derrière), et un mot-clé de départ appartenant à l'ensemble lecture
     seule. `_DISALLOWED_SQL_KEYWORDS` couvre en plus les cas où un mot-clé
@@ -42,7 +42,7 @@ def ensure_read_only_query(sql: str) -> None:
     vrai parseur SQL : suffisante pour empêcher un usage naïf ou un LLM mal
     aiguillé (via un client MCP externe, ou une question utilisateur qui
     tenterait d'orienter le SQL généré vers une écriture), pas un
-    contournement volontaire et sophistiqué -- dans ce cas, la vraie
+    contournement volontaire et sophistiqué, dans ce cas la vraie
     protection reste de ne jamais exposer ces outils à un appelant non fiable.
     """
     stripped = sql.strip().rstrip(";")
@@ -62,7 +62,7 @@ class JoinConfigurationError(UserFacingError):
     """Levée quand la jointure configurée par l'utilisateur ne peut pas aboutir.
 
     Typiquement des colonnes de types incompatibles (ex. une colonne date
-    jointe à une colonne de texte) -- severity="error" (le défaut de
+    jointe à une colonne de texte), severity="error" (le défaut de
     UserFacingError) : contrairement à un quota LLM épuisé, ça ne se résout
     pas tout seul, l'utilisateur doit revoir sa configuration.
     """
@@ -72,12 +72,12 @@ def quote_ident(name: str) -> str:
     """Échappe un identifiant SQL (nom de colonne ou de table) pour DuckDB.
 
     Les noms de colonnes viennent tels quels de l'en-tête du CSV téléversé
-    par l'utilisateur -- une donnée non fiable. Sans ce guillemetage, un nom
+    par l'utilisateur, une donnée non fiable. Sans ce guillemetage, un nom
     de colonne comme `1) UNION SELECT secret FROM autre_table -- x_id`
     (qui matche en plus ID_COLUMN_PATTERN via son suffixe `_id`) sort du
     contexte d'identifiant et injecte du SQL arbitraire dans les requêtes
     de build_node/test_node/validate_node, jusqu'à lire des tables DuckDB
-    sans rapport -- confirmé par test manuel avant ce correctif. Mettre le
+    sans rapport, confirmé par test manuel avant ce correctif. Mettre le
     nom entre guillemets doubles (en doublant les guillemets internes) le
     neutralise complètement : DuckDB traite alors tout le contenu comme un
     simple nom, jamais comme du SQL.
@@ -107,7 +107,7 @@ def detect_id_column(schema: list[dict], date_columns: list[str]) -> str | None:
 def _table_name_from_path(csv_path: str) -> str:
     """Dérive un nom de table sûr à partir d'un chemin de fichier.
 
-    Tout caractère qui n'est pas alphanumérique/underscore est neutralisé --
+    Tout caractère qui n'est pas alphanumérique/underscore est neutralisé,
     voir UNSAFE_TABLE_CHARS.
     """
     return UNSAFE_TABLE_CHARS.sub("_", Path(csv_path).stem)
@@ -123,7 +123,7 @@ def _load_csv_into_table(con, csv_path: str) -> str:
     Le chemin passe en paramètre lié (`?`), pas interpolé dans le SQL : un
     nom de fichier contenant une apostrophe (ex. `x') UNION SELECT secret
     FROM autre_table --`) casserait sinon hors du littéral et injecterait du
-    SQL arbitraire -- confirmé par test manuel avant ce correctif, exactement
+    SQL arbitraire, confirmé par test manuel avant ce correctif, exactement
     comme pour les noms de colonnes (voir quote_ident()). Dans le cas du mode
     agent Streamlit ce chemin est déjà assaini en amont (voir
     _write_session_csv), mais le pipeline de streaming (agent/streaming/
@@ -162,7 +162,7 @@ def _extract_table_metadata(con, table_name: str) -> dict:
 
     # Plage de dates pour chaque colonne de date. Les noms de colonnes
     # viennent du CSV téléversé (non fiable) : quote_ident() est
-    # indispensable ici, pas une précaution superflue -- voir sa docstring.
+    # indispensable ici, pas une précaution superflue, voir sa docstring.
     date_range = {}
     for col in date_columns:
         result = con.execute(f"""
@@ -171,7 +171,7 @@ def _extract_table_metadata(con, table_name: str) -> dict:
         """).fetchone()
         date_range[col] = {"min": str(result[0]), "max": str(result[1])}
 
-    # Compter les valeurs manquantes par colonne -- une seule requête avec un
+    # Compter les valeurs manquantes par colonne, en une seule requête avec un
     # SUM(CASE ...) par colonne plutôt qu'une requête par colonne (un CSV
     # large en nombre de colonnes générait sinon un aller-retour DuckDB par
     # colonne rien que pour l'inspection). COALESCE(..., 0) : sur une table
@@ -228,7 +228,7 @@ def load_data(csv_path: str, db_path: str = None) -> dict:
     return {
         "table_name": table_name,
         # Chemin DuckDB effectivement utilisé (résolu depuis l'argument ou
-        # DUCKDB_PATH) -- propagé aux nœuds suivants pour qu'ils interrogent
+        # DUCKDB_PATH), propagé aux nœuds suivants pour qu'ils interrogent
         # la même base, y compris quand un chemin par session est utilisé.
         "db_path": db_path,
         **metadata,
@@ -252,22 +252,22 @@ def load_joined_data(csv_paths: list[str], join_spec: dict, db_path: str = None)
             ],
         }
     Chaque étape doit se rattacher à un fichier déjà inclus (root ou une
-    étape précédente) -- ça garantit un arbre connexe plutôt qu'un graphe de
+    étape précédente), ce qui garantit un arbre connexe plutôt qu'un graphe de
     jointures ambigu, tout en couvrant un nombre quelconque de fichiers.
 
     Toutes les colonnes de sortie sont préfixées "{table}__{colonne}" pour
     éviter toute collision entre fichiers (ex. deux fichiers avec une
-    colonne "date" ou "id") -- la détection de colonne identifiant/date en
+    colonne "date" ou "id") : la détection de colonne identifiant/date en
     aval fonctionne aussi bien sur ces noms préfixés.
 
     Comme il n'y a pas de détection automatique de clé, rien ne garantit que
-    les colonnes choisies par l'utilisateur se correspondent réellement --
+    les colonnes choisies par l'utilisateur se correspondent réellement :
     joindre sur des colonnes sans rapport produit silencieusement une table
     vide (aucune valeur en commun) ou, à l'inverse, une explosion du nombre
     de lignes (colonne choisie non unique). Ces deux cas sont détectés après
     coup en comparant le nombre de lignes obtenu à celui de chaque fichier
-    source, et exposés via metadata["join_warning"] (None si rien d'anormal)
-    -- affiché dans le résumé d'approbation et dans l'interface Streamlit
+    source, et exposés via metadata["join_warning"] (None si rien d'anormal),
+    affiché dans le résumé d'approbation et dans l'interface Streamlit
     pour que l'utilisateur puisse corriger sa configuration avant de
     poursuivre une analyse qui ne veut rien dire.
 
@@ -328,7 +328,7 @@ def load_joined_data(csv_paths: list[str], join_spec: dict, db_path: str = None)
     except Exception as e:
         # La cause la plus fréquente : les deux colonnes choisies pour une
         # étape de jointure n'ont pas des types compatibles (ex. une colonne
-        # date jointe à une colonne texte) -- DuckDB tente alors une
+        # date jointe à une colonne texte), DuckDB tente alors une
         # conversion implicite qui échoue avec un message technique illisible
         # pour un utilisateur non technique, qui plus est truffé de noms de
         # table internes générés (confirmé par retour utilisateur sur le
@@ -394,7 +394,7 @@ def fetch_dataframe(sql: str, db_path: str = None):
 
     Contrairement à execute_query() (pensé pour l'affichage/le LLM, qui
     renvoie du markdown), cette fonction sert quand le résultat doit être
-    manipulé par du code -- tests statistiques, export Excel/PPTX...
+    manipulé par du code : tests statistiques, export Excel/PPTX...
 
     Args:
         sql: Requête SQL à exécuter

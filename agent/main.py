@@ -1,4 +1,4 @@
-# agent/main.py — Point d'entrée de l'agent
+# agent/main.py : point d'entrée de l'agent
 import sys
 import uuid
 from agent.graph import build_agent_graph
@@ -15,12 +15,12 @@ if hasattr(sys.stdout, "reconfigure"):
 
 def _print_progress(event: dict):
     # Chaîne intermédiaire pour éviter un backslash dans l'expression d'une
-    # f-string, syntaxe invalide avant Python 3.12 (PEP 701) -- la CI teste
+    # f-string, syntaxe invalide avant Python 3.12 (PEP 701), la CI teste
     # aussi 3.11.
     #
     # status est un AnalysisStatus (str, Enum) : sans getattr(..., "value", ...),
     # l'interpolation affichait littéralement "AnalysisStatus.BUILDING" au lieu
-    # de "construction" (Enum.__str__ prime sur str.__str__ pour ce mixin) --
+    # de "construction" (Enum.__str__ prime sur str.__str__ pour ce mixin),
     # confirmé par une exécution CLI réelle.
     status = event.get("status", "En cours d'exécution")
     status_label = getattr(status, "value", status)
@@ -47,10 +47,10 @@ def run_analysis(
         query: La question d'analyse
         data_path: Chemin vers le fichier de données
         language: Langue des livrables (fr ou en)
-        db_path: Chemin DuckDB à utiliser (par défaut DUCKDB_PATH) --
+        db_path: Chemin DuckDB à utiliser (par défaut DUCKDB_PATH),
             utile pour isoler des analyses concurrentes
         checkpoint_path: Fichier de checkpoint SQLite de l'agent (par
-            défaut ./data/agent_memory.db) -- utile pour isoler des
+            défaut ./data/agent_memory.db), utile pour isoler des
             analyses concurrentes
     """
     print("Démarrage de l'agent IA...")
@@ -70,7 +70,7 @@ def run_analysis(
         llm_provider=llm_provider,
     )
 
-    # Chaque appel a son propre fil de conversation LangGraph -- un
+    # Chaque appel a son propre fil de conversation LangGraph : un
     # thread_id fixe ferait collisionner deux analyses successives (ou
     # concurrentes) sur le même historique de checkpoint.
     config = {"configurable": {"thread_id": str(uuid.uuid4())}}
@@ -85,7 +85,7 @@ def run_analysis(
     snapshot = agent.get_state(config)
     if snapshot.next == ("approval",):
         print("\n" + "=" * 60)
-        print("RÉSUMÉ DE L'INSPECTION — APPROBATION REQUISE")
+        print("RÉSUMÉ DE L'INSPECTION : APPROBATION REQUISE")
         print("=" * 60)
         print(format_inspection_summary(AgentState(**snapshot.values)))
         print("=" * 60)

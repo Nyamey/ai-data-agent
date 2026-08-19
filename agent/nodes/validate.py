@@ -1,4 +1,4 @@
-# agent/nodes/validate.py — Nœud 5 : Validation
+# agent/nodes/validate.py : nœud 5, validation
 from agent.state import AgentState, AnalysisStatus
 from agent.tools.data_loader import execute_query, quote_ident
 
@@ -15,7 +15,7 @@ def validate_node(state: AgentState) -> dict:
     state.status = AnalysisStatus.VALIDATING
 
     # table/id_col/colonne de date viennent tous du schéma du CSV téléversé
-    # (non fiable) : quote_ident() est requis à chaque interpolation SQL --
+    # (non fiable) : quote_ident() est requis à chaque interpolation SQL,
     # voir sa docstring dans agent/tools/data_loader.py.
     table = quote_ident(state.data_metadata.get("table_name", "data"))
     db_path = state.data_metadata.get("db_path")
@@ -25,7 +25,7 @@ def validate_node(state: AgentState) -> dict:
     checks = {}
 
     # execute_query() absorbe déjà ses propres exceptions et renvoie une
-    # chaîne "Erreur SQL: ..." au lieu de lever -- un try/except autour de
+    # chaîne "Erreur SQL: ..." au lieu de lever : un try/except autour de
     # ses appels ne s'exécuterait donc jamais (code mort, jamais atteint) et
     # masquait en plus un vrai bug : un contrôle marqué "passed": True même
     # quand la requête sous-jacente avait échoué, puisque l'erreur n'était

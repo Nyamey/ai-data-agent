@@ -1,4 +1,4 @@
-# agent/streaming/watcher.py — Surveillance de répertoire pour nouveaux fichiers
+# agent/streaming/watcher.py : surveillance de répertoire pour nouveaux fichiers
 import time
 from pathlib import Path
 from watchdog.observers import Observer

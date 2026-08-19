@@ -1,4 +1,4 @@
-# agent/output/excel_generator.py — Génération de classeurs Excel
+# agent/output/excel_generator.py : génération de classeurs Excel
 import io
 
 import openpyxl
@@ -16,7 +16,7 @@ class ExcelGenerator:
 
     Onglets générés :
     1. Métrique construite (ex. rétention hebdomadaire)
-    2. Analyse des facteurs -- un onglet par dimension testée
+    2. Analyse des facteurs, un onglet par dimension testée
     3. Validation
     """
 
@@ -76,13 +76,13 @@ class ExcelGenerator:
     
     def add_cleaned_data(self, df: pd.DataFrame, title: str = "Données nettoyées"):
         """Ajoute la donnée nettoyée elle-même, suivie d'une feuille de
-        statistiques descriptives (df.describe()) -- pensé pour un export
+        statistiques descriptives (df.describe()), pensée pour un export
         autonome des données de l'analyse, séparé du rapport de résultats
         (métrique construite, facteurs, validation, recommandations).
 
         df.describe() décrit les colonnes numériques par défaut, ou bascule
         automatiquement sur des statistiques catégorielles (count/unique/
-        top/freq) s'il n'y a aucune colonne numérique -- comportement natif
+        top/freq) s'il n'y a aucune colonne numérique, comportement natif
         de pandas, pas de cas particulier à gérer ici.
         """
         self._add_sheet_with_data(title, df)
@@ -91,7 +91,7 @@ class ExcelGenerator:
         ws = self.wb.create_sheet(title=stats_title)
         # openpyxl.dataframe_to_rows(index=True, header=True) insère toujours
         # une ligne fantôme juste après l'en-tête (le nom de l'index, sur sa
-        # propre ligne) -- un artefact de sa mise en forme, pas une donnée à
+        # propre ligne), un artefact de sa mise en forme, pas une donnée à
         # garder.
         for i, row in enumerate(dataframe_to_rows(neutralize_formulas(df.describe()), index=True, header=True)):
             if i != 1:
@@ -124,7 +124,7 @@ class ExcelGenerator:
         return path
 
     def to_bytes(self) -> bytes:
-        """Sérialise le classeur en mémoire -- pour un téléchargement Streamlit
+        """Sérialise le classeur en mémoire, pour un téléchargement Streamlit
         direct (`st.download_button`), sans passer par un fichier temporaire."""
         self._drop_default_sheet()
         buf = io.BytesIO()

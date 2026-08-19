@@ -1,4 +1,4 @@
-# agent/nodes/recommend.py — Nœud 6 : Recommandations
+# agent/nodes/recommend.py : nœud 6, recommandations
 import json
 from agent.state import AgentState, AnalysisStatus
 from agent.llm.config import get_llm_response, extract_json
@@ -38,7 +38,7 @@ def recommend_node(state: AgentState) -> dict:
     formule des recommandations actionnables. Priorise les dimensions
     statistiquement significatives (p < 0.05) : un écart significatif est un
     vrai signal, un écart non significatif peut n'être que du bruit
-    d'échantillonnage -- dis-le explicitement si tu t'appuies sur une
+    d'échantillonnage. Dis-le explicitement si tu t'appuies sur une
     dimension non significative.
 
     {context}

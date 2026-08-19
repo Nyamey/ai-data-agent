@@ -1,4 +1,4 @@
-# agent/state.py — Schéma d'état de l'agent
+# agent/state.py : schéma d'état de l'agent
 from pydantic import BaseModel, Field
 from typing import Optional
 from enum import Enum
@@ -34,19 +34,19 @@ class AgentState(BaseModel):
     )
     data_paths: Optional[list[str]] = Field(
         default=None,
-        description="Chemins de tous les fichiers à joindre (mode jointure uniquement) -- "
+        description="Chemins de tous les fichiers à joindre (mode jointure uniquement), "
         "voir join_spec et agent.tools.data_loader.load_joined_data",
     )
     join_spec: Optional[dict] = Field(
         default=None,
-        description="Arbre de jointure {'root': chemin, 'joins': [...]} -- présent uniquement "
+        description="Arbre de jointure {'root': chemin, 'joins': [...]}, présent uniquement "
         "en mode jointure ; l'inspection charge alors data_paths via load_joined_data() "
         "au lieu de data_path via load_data()",
     )
     output_language: str = Field(default="fr", description="Langue des livrables")
     db_path: Optional[str] = Field(
         default=None,
-        description="Chemin DuckDB à utiliser (par défaut DUCKDB_PATH) -- "
+        description="Chemin DuckDB à utiliser (par défaut DUCKDB_PATH), "
         "permet d'isoler les analyses concurrentes (ex. sessions Streamlit)",
     )
     llm_provider: Optional[str] = Field(

@@ -1,4 +1,4 @@
-# tests/conftest.py — fixtures partagées
+# tests/conftest.py : fixtures partagées
 import io
 
 import pandas as pd

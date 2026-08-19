@@ -1,4 +1,4 @@
-# tests/test_app_utils.py — Fonctions pures de app.py (nettoyage, exports, sécurité)
+# tests/test_app_utils.py : fonctions pures de app.py (nettoyage, exports, sécurité)
 import pandas as pd
 
 from app_utils import (

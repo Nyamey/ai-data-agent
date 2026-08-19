@@ -1,4 +1,4 @@
-# tests/test_llm_config.py — Extraction de JSON et repli entre providers LLM
+# tests/test_llm_config.py : extraction de JSON et repli entre providers LLM
 import json
 
 import pytest

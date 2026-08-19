@@ -1,4 +1,4 @@
-# test_duckdb.py — Teste le chargement de données avec DuckDB
+# test_duckdb.py : teste le chargement de données avec DuckDB
 from agent.tools.data_loader import load_data, execute_query
 
 # Charger le fichier CSV

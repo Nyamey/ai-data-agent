@@ -1,4 +1,4 @@
-# tests/test_excel_generator.py — Génération de classeurs Excel
+# tests/test_excel_generator.py : génération de classeurs Excel
 import openpyxl
 import pandas as pd
 

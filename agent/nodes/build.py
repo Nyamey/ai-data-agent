@@ -1,4 +1,4 @@
-# agent/nodes/build.py — Nœud 3 : Construction des analyses
+# agent/nodes/build.py : nœud 3, construction des analyses
 from agent.state import AgentState, AnalysisStatus
 from agent.tools.data_loader import execute_query, quote_ident
 
@@ -17,7 +17,7 @@ def build_node(state: AgentState) -> dict:
 
     # table/id_col/date_col viennent tous du schéma du CSV téléversé (non
     # fiable) : quote_ident() est requis à chaque interpolation SQL, pas une
-    # précaution superflue -- voir sa docstring dans agent/tools/data_loader.py.
+    # précaution superflue, voir sa docstring dans agent/tools/data_loader.py.
     table = quote_ident(state.data_metadata.get("table_name", "data"))
     db_path = state.data_metadata.get("db_path")
     id_col = state.data_metadata.get("id_column")
@@ -39,7 +39,7 @@ def build_node(state: AgentState) -> dict:
         label = f"Évolution hebdomadaire ({count_label}, sur {date_col})"
     else:
         query = f"SELECT {count_expr} as valeur FROM {table}"
-        label = f"Total ({count_label}) -- aucune colonne date détectée"
+        label = f"Total ({count_label}), aucune colonne date détectée"
 
     # execute_query() absorbe déjà ses propres exceptions (renvoie une
     # chaîne "Erreur SQL: ..." au lieu de lever) : un try/except ici ne

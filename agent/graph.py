@@ -1,4 +1,4 @@
-# agent/graph.py — Assemblage du graphe LangGraph
+# agent/graph.py : assemblage du graphe LangGraph
 import sqlite3
 from pathlib import Path
 from langgraph.graph import StateGraph, END
@@ -23,7 +23,7 @@ def build_agent_graph(checkpoint_path: str = "./data/agent_memory.db"):
 
     Le graphe s'interrompt réellement avant le nœud "approval" (via
     `interrupt_before`, mécanisme natif LangGraph) plutôt que de bloquer sur
-    un `input()` dans le nœud lui-même -- ce qui permet de reprendre
+    un `input()` dans le nœud lui-même, ce qui permet de reprendre
     l'exécution depuis n'importe quel appelant (CLI interactif, UI web...),
     chacun décidant comment recueillir l'approbation avant d'appeler
     `update_state` puis de reprendre le stream.

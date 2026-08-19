@@ -1,4 +1,4 @@
-# agent/streaming/pipeline.py — Pipeline complet d'analyse en streaming
+# agent/streaming/pipeline.py : pipeline complet d'analyse en streaming
 import shutil
 import uuid
 from pathlib import Path
@@ -11,19 +11,20 @@ class StreamingAnalysisPipeline:
     """
     Pipeline qui surveille un dossier et déclenche une analyse agent quand
     l'arrivée d'un nouveau fichier est jugée anormale (volumétrie inhabituelle
-    par rapport à l'historique récent des fichiers reçus via `AnomalyDetector`)
-    -- au lieu de lancer une analyse coûteuse à chaque fichier, peu importe
+    par rapport à l'historique récent des fichiers reçus via `AnomalyDetector`),
+    au lieu de lancer une analyse coûteuse à chaque fichier, peu importe
     s'il ressemble aux précédents.
 
     Le graphe de l'agent s'interrompt réellement avant l'étape d'approbation
-    (voir agent/graph.py) -- impossible à recueillir de façon interactive
-    depuis un thread de surveillance de fichiers. Deux modes explicites :
+    (voir agent/graph.py), ce qui est impossible à recueillir de façon
+    interactive depuis un thread de surveillance de fichiers. Deux modes
+    explicites :
 
     - `require_approval=False` (par défaut) : contourne l'approbation
       automatiquement (`approval_received=True`) dès que le graphe s'y
       arrête, pour un pipeline vraiment non supervisé.
     - `require_approval=True` : laisse l'analyse en attente dans
-      `self.pending` -- un appelant externe doit ensuite appeler
+      `self.pending`. Un appelant externe doit ensuite appeler
       `approve(thread_id)` ou `reject(thread_id)` pour la faire reprendre.
     """
 
@@ -50,11 +51,11 @@ class StreamingAnalysisPipeline:
         """Compte les lignes du fichier sans le charger entièrement en mémoire.
 
         `file_path` vient tel quel du nom du fichier déposé dans le dossier
-        surveillé -- une donnée non fiable, contrairement au mode agent
+        surveillé, une donnée non fiable, contrairement au mode agent
         Streamlit où ce chemin est déjà assaini. Passé en paramètre lié
         (`?`) plutôt qu'interpolé dans le SQL pour ne pas pouvoir sortir du
         littéral (ex. un nom de fichier contenant une apostrophe) et
-        injecter du SQL arbitraire -- confirmé exploitable par test manuel
+        injecter du SQL arbitraire, confirmé exploitable par test manuel
         avant ce correctif.
         """
         con = duckdb.connect(":memory:")
@@ -69,11 +70,11 @@ class StreamingAnalysisPipeline:
 
         export_node (agent/nodes/export.py) génère déjà ces fichiers pour
         n'importe quel appelant du graphe (CLI, Streamlit, ici) sous
-        `./outputs/rapport_<horodatage>.xlsx` -- mais ce nom générique ne dit
+        `./outputs/rapport_<horodatage>.xlsx`, mais ce nom générique ne dit
         pas quel fichier source a déclenché l'analyse, et rien ne le
         signalait jusqu'ici à qui pilote le pipeline de streaming. On copie
         donc les livrables dans un dossier dédié, nommés d'après le fichier
-        source, et on l'annonce -- sans changer export_node lui-même, qui
+        source, et on l'annonce, sans changer export_node lui-même, qui
         reste indépendant de son appelant.
         """
         excel_path = final_state.get("excel_path")
@@ -99,24 +100,24 @@ class StreamingAnalysisPipeline:
         try:
             row_count = self._row_count(file_path)
         except Exception as e:
-            print(f"[PIPELINE] Impossible de lire {file_path} ({e}) -- ignoré.")
+            print(f"[PIPELINE] Impossible de lire {file_path} ({e}), ignoré.")
             return
 
         result = self.detector.update(row_count)
         # On lance quand même l'analyse tant que le détecteur n'a pas assez
         # d'historique pour juger (les toutes premières arrivées). En
         # revanche "pas_de_variance" signifie que cette valeur est identique
-        # à un historique déjà constant -- par construction le cas le plus
+        # à un historique déjà constant, par construction le cas le plus
         # normal qui soit, donc à ignorer comme n'importe quelle volumétrie
         # non anormale, pas à traiter comme un cas particulier à lancer.
         should_run = result["anomaly"] or result.get("reason") == "pas_assez_de_donnees"
         if not should_run:
             print(
                 f"[PIPELINE] Volumétrie normale ({row_count} lignes, "
-                f"z-score {result.get('z_score')}) -- analyse non déclenchée."
+                f"z-score {result.get('z_score')}), analyse non déclenchée."
             )
             return
-        print(f"[PIPELINE] Déclenchement de l'analyse -- {result}")
+        print(f"[PIPELINE] Déclenchement de l'analyse : {result}")
 
         from agent.graph import build_agent_graph
         from agent.state import AgentState

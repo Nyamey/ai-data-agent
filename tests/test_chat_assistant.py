@@ -1,4 +1,4 @@
-# tests/test_chat_assistant.py — Assistant conversationnel sur les résultats d'une analyse
+# tests/test_chat_assistant.py : assistant conversationnel sur les résultats d'une analyse
 import json
 
 import pandas as pd

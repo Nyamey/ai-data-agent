@@ -1,4 +1,4 @@
-# tests/test_main.py — Point d'entrée CLI (jamais couvert par un test avant ce fichier)
+# tests/test_main.py : point d'entrée CLI (jamais couvert par un test avant ce fichier)
 #
 # Comme pour les tests d'intégration Streamlit, le graphe LangGraph est
 # remplacé par un faux graphe déterministe pour rester rapide et

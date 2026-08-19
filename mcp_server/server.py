@@ -1,4 +1,4 @@
-# mcp_server/server.py — Serveur MCP pour DuckDB
+# mcp_server/server.py : serveur MCP pour DuckDB
 """
 Ce serveur MCP expose DuckDB aux assistants IA compatibles MCP.
 Une fois configuré, Claude Desktop ou VS Code peut interroger
@@ -65,7 +65,7 @@ def execute_query(sql: str, limit: int = 1000) -> str:
     Exécute une requête de LECTURE SQL sur DuckDB et retourne les résultats.
 
     Restreinte au lecture seule (SELECT/WITH/DESCRIBE/SHOW/EXPLAIN, une
-    seule instruction) -- voir _ensure_read_only(). Ce serveur expose DuckDB
+    seule instruction), voir _ensure_read_only(). Ce serveur expose DuckDB
     à des assistants IA externes ; leur permettre d'écrire ou de modifier le
     schéma depuis un outil d'exploration de données n'a pas sa place ici.
 
@@ -111,7 +111,7 @@ def load_csv(file_path: str, table_name: str = None) -> str:
     try:
         # file_path en paramètre lié (pas interpolé) : un chemin contenant
         # une apostrophe casserait sinon hors du littéral SQL et pourrait
-        # injecter des instructions arbitraires -- même défaut que celui
+        # injecter des instructions arbitraires, même défaut que celui
         # trouvé et corrigé dans agent/tools/data_loader.py et
         # agent/streaming/pipeline.py.
         con.execute(

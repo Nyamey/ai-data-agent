@@ -1,4 +1,4 @@
-# tests/test_data_loader.py — Chargement DuckDB et détection de schéma
+# tests/test_data_loader.py : chargement DuckDB et détection de schéma
 import duckdb
 import pandas as pd
 import pytest
