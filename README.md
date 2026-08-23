@@ -82,7 +82,7 @@ Un schéma détaillé est disponible dans [`docs/architecture.svg`](docs/archite
 
 ## Installation
 
-Prérequis : Python 3.10+.
+Prérequis : Python 3.11+.
 
 ```bash
 # Cloner le dépôt
@@ -225,7 +225,7 @@ python -m pytest tests/ -v
 python -m pytest tests/ --cov=agent --cov=app_utils --cov=agent_ui --cov=simple_mode_ui --cov=ui_helpers --cov=mcp_server --cov-report=term-missing
 ```
 
-182 tests, ~92 % de couverture sur `agent/`, `app_utils.py`, `agent_ui.py`, `simple_mode_ui.py`, `ui_helpers.py` et `mcp_server/` combinés. La suite couvre le nettoyage/export de données, le chargement DuckDB et la détection de schéma (fichier seul et jointure multi-fichiers, y compris les régressions de sécurité SQL décrites ci-dessus), l'extraction de JSON depuis une réponse LLM imparfaite, tous les nœuds de l'agent, y compris `framing`/`recommend` (qui appellent un LLM) et `export` (génération Excel/PowerPoint), le test de significativité chi² et son garde-fou de cardinalité, le repli entre providers LLM, le point d'entrée CLI (`agent/main.py`), la restriction en lecture seule du serveur MCP et du chat de suivi (`tests/test_chat_assistant.py`), la décision de déclenchement du pipeline de streaming et l'organisation de ses livrables, les générateurs Excel/PowerPoint et la vérification de cohérence entre les deux.
+182 tests, 93 % de couverture sur `agent/`, `app_utils.py`, `agent_ui.py`, `simple_mode_ui.py`, `ui_helpers.py` et `mcp_server/` combinés. La suite couvre le nettoyage/export de données, le chargement DuckDB et la détection de schéma (fichier seul et jointure multi-fichiers, y compris les régressions de sécurité SQL décrites ci-dessus), l'extraction de JSON depuis une réponse LLM imparfaite, tous les nœuds de l'agent, y compris `framing`/`recommend` (qui appellent un LLM) et `export` (génération Excel/PowerPoint), le test de significativité chi² et son garde-fou de cardinalité, le repli entre providers LLM, le point d'entrée CLI (`agent/main.py`), la restriction en lecture seule du serveur MCP et du chat de suivi (`tests/test_chat_assistant.py`), la décision de déclenchement du pipeline de streaming et l'organisation de ses livrables, les générateurs Excel/PowerPoint et la vérification de cohérence entre les deux.
 
 Pour `framing`/`recommend`, seul l'appel réseau est simulé (`litellm.completion`, avec des réponses représentatives d'un vrai modèle : JSON dans un bloc ```json, ou texte libre sans JSON) : `get_llm_response()`, l'extraction JSON et la logique des nœuds tournent pour de vrai, sans dépendre d'un provider externe ni de sa disponibilité du jour. Le même principe s'applique au point d'entrée CLI et aux tests d'intégration de l'interface (`tests/test_app_integration.py`) : ils pilotent réellement les widgets Streamlit (radio, sélecteurs, clics) via `AppTest`, avec le graphe LangGraph remplacé par un faux graphe déterministe (`tests/streamlit_scripts/`), pour vérifier bout en bout l'inspection, l'isolation entre fichiers, la jointure et l'affichage d'un quota épuisé sans dépendre du réseau. Une intégration continue (GitHub Actions, [`.github/workflows/tests.yml`](.github/workflows/tests.yml)) exécute cette suite sur Python 3.11 et 3.12 à chaque push/PR sur `main`, sans clé API requise.
 
