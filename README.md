@@ -1,23 +1,22 @@
 # ai-data-agent
 
-**Agent IA open source pour l'analyse de données, conçu pour raisonner comme un analyste, pas seulement générer du SQL.**
+**Étude de cas : donner à une IA la discipline d'un analyste senior, pas seulement l'accès à une base de données.**
 
-`ai-data-agent` transforme une question métier en une analyse structurée, vérifiée et actionnable. Au lieu de produire une réponse en une seule passe, l'**agent** suit un workflow d'analyste : il cadre le problème, inspecte les données, **s'arrête pour demander une validation humaine**, construit l'analyse, la teste, la valide, puis formule des recommandations classées par impact et faisabilité.
+## Le problème
 
-Le projet est construit avec **LangGraph** (orchestration multi-étapes avec état persistant), **DuckDB** (moteur analytique en mémoire), **Streamlit** (interface web) et un **serveur MCP** qui expose la base à n'importe quel assistant IA compatible (Claude Desktop, VS Code…).
+Un outil « text-to-SQL » classique répond vite et se trompe silencieusement : il saute directement à la requête, produit un chiffre plausible, et personne ne voit qu'il a mal cadré la question, ignoré un biais dans les données, ou halluciné une tendance qui n'existe pas. Sur un cas d'usage métier réel — une baisse de rétention, une anomalie dans un flux de facturation — cette confiance mal placée coûte plus cher que l'attente d'une réponse correcte.
 
-> **Deux interfaces, un même agent.** L'**agent LangGraph en 8 étapes** (avec point de contrôle humain) s'exécute en CLI via `python -m agent.main`, ou depuis l'**application Streamlit** (`app.py`) en sélectionnant le mode « Agent complet ». L'app garde aussi son mode « Analyse simple » d'origine (analyse LLM en une seule passe, sans le graphe) pour une utilisation rapide sur n'importe quel CSV (voir la section [Utilisation](#utilisation)).
+## La décision de conception
 
----
+Plutôt que de faire produire une réponse en une seule passe à un LLM, `ai-data-agent` force un déroulé d'analyste : cadrer le problème avant de calculer, inspecter les données, **s'arrêter et attendre une validation humaine explicite** avant de lancer l'analyse, construire, tester statistiquement, valider, puis seulement recommander. Le compromis assumé : l'agent est plus lent qu'une réponse en une passe, en échange d'une garantie qu'aucune étape ne s'exécute sans qu'un humain ait vu ce qui va être testé.
 
-## Pourquoi ce projet
+Ce point d'arrêt n'est pas un `input()` de confort : c'est un vrai point d'interruption LangGraph (`interrupt_before`), le même mécanisme qui permettrait de brancher cet agent sur un système de production sans changer son architecture — approbation asynchrone, reprise après redémarrage, audit trail complet.
 
-La plupart des outils « text-to-SQL » sautent directement à la requête et produisent des réponses plausibles mais non vérifiées. `ai-data-agent` reproduit la démarche d'un analyste senior :
+## Le résultat
 
-- **Cadrer avant de calculer** : définir la métrique de façon opérationnelle et reformuler la question de manière testable évite de partir dans la mauvaise direction.
-- **Human-in-the-loop** : l'agent marque une vraie pause après l'inspection des données (point d'interruption LangGraph natif, pas un simple `input()`) et attend une approbation explicite avant de lancer l'analyse, aussi bien en CLI que dans l'interface Streamlit.
-- **Traçabilité** : chaque étape est journalisée dans un *audit trail*, et l'état complet est persisté (SQLite) pour être repris ou audité.
-- **Livrables prêts à l'emploi** : export Markdown, CSV, Excel et PowerPoint. Le mode simple les génère depuis l'analyse LLM en une passe ; l'agent en 8 étapes génère ses propres Excel/PowerPoint à partir de ses résultats réels (métrique construite, facteurs explicatifs, validation, recommandations), avec une vérification automatique de cohérence entre les deux fichiers, téléchargeables directement depuis l'interface Streamlit. Les **données nettoyées elles-mêmes** sont aussi téléchargeables dans les deux modes (CSV/ZIP ou Excel en mode simple, Excel en mode agent), chaque classeur Excel incluant une feuille de statistiques descriptives par fichier.
+Un agent en 8 étapes (cadrage → inspection → **approbation humaine** → construction → test → validation → recommandations → export), utilisable en CLI ou via une interface Streamlit, avec un serveur MCP qui expose la même base à n'importe quel assistant IA compatible (Claude Desktop, VS Code…). Testé à 182 cas automatisés (~92 % de couverture) et livré avec deux garde-fous de sécurité trouvés et corrigés en cours de route (protection SQL et anti-injection de formule Excel/CSV) — pas une preuve de concept qui s'arrête au premier `git push`.
+
+> **Deux interfaces, un même agent.** L'**agent LangGraph en 8 étapes** s'exécute en CLI via `python -m agent.main`, ou depuis l'**application Streamlit** (`app.py`) en sélectionnant le mode « Agent complet ». L'app garde aussi son mode « Analyse simple » d'origine (analyse LLM en une seule passe, sans le graphe) pour une utilisation rapide sur n'importe quel CSV (voir la section [Utilisation](#utilisation)).
 
 ---
 
