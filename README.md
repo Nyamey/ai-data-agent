@@ -16,6 +16,8 @@ Ce point d'arrêt n'est pas un `input()` de confort : c'est un vrai point d'inte
 
 Un agent en 8 étapes (cadrage → inspection → **approbation humaine** → construction → test → validation → recommandations → export), utilisable en CLI ou via une interface Streamlit, avec un serveur MCP qui expose la même base à n'importe quel assistant IA compatible (Claude Desktop, VS Code…). Testé à 182 cas automatisés (~92 % de couverture) et livré avec deux garde-fous de sécurité trouvés et corrigés en cours de route (protection SQL et anti-injection de formule Excel/CSV) — pas une preuve de concept qui s'arrête au premier `git push`.
 
+**🔗 Démo en ligne : [ai-data-agent-version1.streamlit.app](https://ai-data-agent-version1.streamlit.app/)**
+
 > **Deux interfaces, un même agent.** L'**agent LangGraph en 8 étapes** s'exécute en CLI via `python -m agent.main`, ou depuis l'**application Streamlit** (`app.py`) en sélectionnant le mode « Agent complet ». L'app garde aussi son mode « Analyse simple » d'origine (analyse LLM en une seule passe, sans le graphe) pour une utilisation rapide sur n'importe quel CSV (voir la section [Utilisation](#utilisation)).
 
 ---
