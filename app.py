@@ -1,7 +1,9 @@
 # app.py : point d'entrée Streamlit, coquille de page (config, barre
 # latérale, téléversement/nettoyage) qui délègue chaque mode d'analyse à
 # son propre module (simple_mode_ui.py, agent_ui.py).
+import io
 import os
+from pathlib import Path
 
 import streamlit as st
 from dotenv import load_dotenv
@@ -12,6 +14,19 @@ from simple_mode_ui import render_simple_mode
 from ui_helpers import render_missing_values
 
 MAX_FILES = 5
+SAMPLE_DATA_PATH = Path(__file__).parent / "data" / "sample_data.csv"
+
+
+class SampleFile(io.BytesIO):
+    """Le jeu d'exemple sous la même forme qu'un fichier téléversé (name,
+    size, read/seek), pour qu'il suive exactement le même chemin : lecture,
+    nettoyage, puis mode simple ou agent."""
+
+    def __init__(self, path: Path):
+        data = path.read_bytes()
+        super().__init__(data)
+        self.name = path.name
+        self.size = len(data)
 
 # Charger les variables d'environnement (local via .env, cloud via st.secrets)
 load_dotenv()
@@ -36,13 +51,16 @@ st.session_state.setdefault("history", [])
 # Barre latérale (sidebar)
 with st.sidebar:
     st.header("Configuration")
+    # L'agent complet est ouvert par défaut : c'est lui qui montre l'arrêt
+    # pour validation humaine, le cœur du projet.
     analysis_mode = st.radio(
         "Mode d'analyse",
         ["Analyse simple (LLM en une passe)", "Agent complet (8 étapes, avec validation humaine)"],
+        index=1,
     )
     provider = st.selectbox(
         "Provider LLM",
-        ["Groq (Llama 3.3 70B)", "OpenRouter (GPT-OSS 20B, gratuit)"],
+        ["Groq (GPT-OSS 120B)", "OpenRouter (GPT-OSS 20B, gratuit)"],
         index=0,
     )
     st.markdown("---")
@@ -75,10 +93,25 @@ with col1:
         st.warning(f"Maximum {MAX_FILES} fichiers : seuls les {MAX_FILES} premiers seront utilisés.")
         uploaded_files = uploaded_files[:MAX_FILES]
 
+    # Sans fichier à soi, le jeu d'exemple permet d'aller jusqu'à l'étape
+    # de validation humaine en quelques clics. Un fichier téléversé le
+    # remplace aussitôt.
+    if not uploaded_files:
+        if not st.session_state.get("use_sample_data"):
+            if st.button("Essayer avec les données d'exemple", use_container_width=True):
+                st.session_state["use_sample_data"] = True
+                st.rerun()
+        else:
+            uploaded_files = [SampleFile(SAMPLE_DATA_PATH)]
+            st.caption(
+                f"Données d'exemple chargées : {SAMPLE_DATA_PATH.name}, activité de clients "
+                "synthétique. Téléversez vos propres fichiers pour les remplacer."
+            )
+
     # Question de l'utilisateur
     query = st.text_area(
         "2. Question d'analyse",
-        value="Identifie ce qui explique la récente baisse de rétention client",
+        value="Comment a évolué la rétention hebdomadaire des clients ces dernières semaines ?",
         height=100,
     )
 

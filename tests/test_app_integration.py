@@ -443,3 +443,26 @@ def test_simple_mode_llm_unavailable_shows_warning_not_error(monkeypatch, tmp_pa
     assert len(at.error) == 0
     assert len(at.warning) == 1
     assert "indisponibles" in at.warning[0].value
+
+
+# --- Page d'accueil (app.py) ---
+
+APP_SCRIPT = str(Path(__file__).parent.parent / "app.py")
+
+
+def test_app_opens_on_agent_mode_and_loads_the_sample_data():
+    # La démo doit mener à l'étape de validation humaine sans fichier à soi :
+    # mode agent par défaut, et un bouton qui charge data/sample_data.csv
+    # par le même chemin qu'un fichier téléversé.
+    at = AppTest.from_file(APP_SCRIPT, default_timeout=60)
+    at.run()
+    assert not at.exception, f"Exception inattendue : {[str(e) for e in at.exception]}"
+    assert at.radio[0].value.startswith("Agent complet")
+
+    sample_button = next(b for b in at.button if b.label == "Essayer avec les données d'exemple")
+    sample_button.click().run()
+
+    assert not at.exception, f"Exception inattendue : {[str(e) for e in at.exception]}"
+    assert at.session_state["use_sample_data"] is True
+    assert [tab.label for tab in at.tabs][:1] == ["sample_data.csv"]
+    assert not [b for b in at.button if b.label == "Essayer avec les données d'exemple"]
