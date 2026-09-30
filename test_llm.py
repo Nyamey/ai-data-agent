@@ -16,8 +16,10 @@ print("Clé API trouvée. Test de l'appel LLM...")
 # Utiliser litellm pour appeler l'API (compatible avec tous les providers)
 from litellm import completion
 
+from agent.llm.config import DEFAULT_MODELS
+
 response = completion(
-    model="groq/llama-3.3-70b-versatile",
+    model=DEFAULT_MODELS["groq"],
     messages=[{"role": "user", "content": "Dis bonjour en français en une phrase."}],
     api_key=api_key,
     temperature=0.3,

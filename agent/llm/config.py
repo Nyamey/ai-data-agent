@@ -40,9 +40,12 @@ def extract_json(text: str) -> dict:
 
     raise json.JSONDecodeError("Impossible d'extraire un JSON valide", text, 0)
 
-# Mapping provider → modèle par défaut
+# Mapping provider → modèle par défaut. Groq ne propose plus
+# llama-3.3-70b-versatile (erreur "model does not exist" constatée le
+# 30/09/2026) : le mode simple, qui n'essaie que ce modèle quand Groq est
+# choisi, échouait alors à chaque analyse.
 DEFAULT_MODELS = {
-    "groq": "groq/llama-3.3-70b-versatile",
+    "groq": "groq/openai/gpt-oss-120b",
     "gemini": "gemini/gemini-2.5-flash",
     "openrouter": "openrouter/openai/gpt-oss-20b:free",
     "mistral": "mistral/mistral-large-latest",
