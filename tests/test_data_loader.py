@@ -1,4 +1,6 @@
 # tests/test_data_loader.py : chargement DuckDB et détection de schéma
+from pathlib import Path
+
 import duckdb
 import pandas as pd
 import pytest
@@ -7,11 +9,14 @@ from agent.tools.data_loader import (
     JoinConfigurationError,
     _diagnose_join,
     detect_id_column,
+    ensure_read_only_query,
     execute_query,
     fetch_dataframe,
+    fetch_untrusted_dataframe,
     load_data,
     load_joined_data,
     quote_ident,
+    sandboxed_connection,
 )
 
 
@@ -434,3 +439,72 @@ def test_load_joined_data_no_warning_on_legitimate_join(sample_joinable_csvs, tm
         db_path=str(tmp_path / "analytics.duckdb"),
     )
     assert meta["join_warning"] is None
+
+
+@pytest.fixture
+def analysis_db_and_server_files(tmp_path):
+    """Une base d'analyse, et deux fichiers du serveur qu'une requête écrite
+    par le LLM ou par un client MCP ne doit jamais pouvoir lire."""
+    db_path = str(tmp_path / "analytics.duckdb")
+    con = duckdb.connect(db_path)
+    con.execute(
+        "CREATE TABLE ventes AS SELECT * FROM (VALUES ('mobile', 10), ('web', 20)) t(plateforme, montant)"
+    )
+    con.execute("CREATE SEQUENCE compteur START 1")
+    con.close()
+    secret_txt = tmp_path / "secret.txt"
+    secret_txt.write_text("mot_de_passe=hunter2", encoding="utf-8")
+    secret_csv = tmp_path / "clients_prives.csv"
+    secret_csv.write_text("nom,solde\nDupont,1200\n", encoding="utf-8")
+    return db_path, str(secret_txt), str(secret_csv)
+
+
+@pytest.mark.parametrize("make_sql", [
+    lambda txt, csv: f"SELECT content FROM read_text('{txt}')",
+    lambda txt, csv: f"SELECT * FROM read_csv('{csv}')",
+    lambda txt, csv: f"SELECT * FROM glob('{Path(csv).parent.as_posix()}/*')",
+], ids=["read_text", "read_csv", "glob"])
+def test_untrusted_sql_cannot_read_files_of_the_server(analysis_db_and_server_files, make_sql):
+    # Régression : ces requêtes sont de simples SELECT. La regex les laissait
+    # passer, et elles lisaient n'importe quel fichier du serveur.
+    db_path, secret_txt, secret_csv = analysis_db_and_server_files
+    sql = make_sql(secret_txt, secret_csv)
+    ensure_read_only_query(sql)  # la regex seule ne les arrête pas
+    with pytest.raises(duckdb.Error):
+        fetch_untrusted_dataframe(sql, db_path=db_path)
+
+
+def test_untrusted_sql_cannot_write_through_a_select(analysis_db_and_server_files):
+    # nextval() modifie une séquence depuis un simple SELECT : la regex la
+    # laisse passer, la connexion en lecture seule la refuse.
+    db_path, _, _ = analysis_db_and_server_files
+    ensure_read_only_query("SELECT nextval('compteur')")
+    with pytest.raises(duckdb.Error):
+        fetch_untrusted_dataframe("SELECT nextval('compteur')", db_path=db_path)
+
+
+def test_sandboxed_connection_configuration_is_locked(analysis_db_and_server_files):
+    # lock_configuration bloque tous les réglages, pas seulement l'accès
+    # externe (que DuckDB refuse déjà de réactiver à chaud) : threads
+    # changerait sans ce verrou.
+    db_path, _, _ = analysis_db_and_server_files
+    con = sandboxed_connection(db_path)
+    try:
+        for statement in ["SET enable_external_access = true", "SET threads = 1"]:
+            with pytest.raises(duckdb.Error):
+                con.execute(statement)
+    finally:
+        con.close()
+
+
+def test_untrusted_sql_still_reads_the_analysis_tables(analysis_db_and_server_files):
+    db_path, _, _ = analysis_db_and_server_files
+    df = fetch_untrusted_dataframe("SELECT plateforme, montant FROM ventes ORDER BY montant", db_path=db_path)
+    assert df["plateforme"].tolist() == ["mobile", "web"]
+
+
+def test_untrusted_sql_rejects_writes_before_reaching_duckdb(analysis_db_and_server_files):
+    db_path, _, _ = analysis_db_and_server_files
+    with pytest.raises(ValueError):
+        fetch_untrusted_dataframe("DROP TABLE ventes", db_path=db_path)
+    assert fetch_dataframe("SELECT COUNT(*) FROM ventes", db_path=db_path).iloc[0, 0] == 2

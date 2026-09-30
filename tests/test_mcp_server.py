@@ -55,6 +55,18 @@ def test_execute_query_runs_a_real_read_query(tmp_path, monkeypatch):
     assert "1" in result
 
 
+def test_execute_query_cannot_read_a_file_of_the_machine(tmp_path, monkeypatch):
+    # Régression : un SELECT sur read_text() passait _ensure_read_only() et
+    # lisait le fichier. La connexion restreinte le refuse, même quand la
+    # base n'existe pas encore.
+    secret = tmp_path / "secret.txt"
+    secret.write_text("mot_de_passe=hunter2", encoding="utf-8")
+    monkeypatch.setattr("mcp_server.server.db_path", str(tmp_path / "test.duckdb"))
+    result = execute_query(f"SELECT content FROM read_text('{secret}')")
+    assert result.startswith("Erreur SQL:")
+    assert "hunter2" not in result
+
+
 def test_health_check_reports_healthy(tmp_path, monkeypatch):
     db_path = str(tmp_path / "test.duckdb")
     monkeypatch.setattr("mcp_server.server.db_path", db_path)

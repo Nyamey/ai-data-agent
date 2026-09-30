@@ -411,6 +411,56 @@ def fetch_dataframe(sql: str, db_path: str = None):
         con.close()
 
 
+def sandboxed_connection(db_path: str) -> duckdb.DuckDBPyConnection:
+    """Connexion DuckDB pour du SQL écrit par un tiers non fiable.
+
+    ensure_read_only_query() seule laissait passer la lecture de fichiers :
+    `SELECT * FROM read_text('/etc/passwd')` ou `read_csv` sur n'importe
+    quel chemin du serveur restent de simples SELECT. Cette connexion ferme
+    ce trou au niveau du moteur, quel que soit le texte de la requête :
+    - read_only=True : aucune écriture possible dans la base ;
+    - enable_external_access=false : ni read_text, ni read_csv, ni glob,
+      ni COPY, ni chargement d'extension, aucun accès hors du fichier de
+      la base elle-même ;
+    - lock_configuration=true : la requête ne peut pas réactiver ces
+      réglages.
+    """
+    if Path(db_path).exists():
+        con = duckdb.connect(db_path, read_only=True, config={"enable_external_access": False})
+    else:
+        # Pas encore de base (ex. serveur MCP interrogé avant tout
+        # load_csv) : rien à lire, et DuckDB refuse d'ouvrir en lecture
+        # seule un fichier absent. Une base en mémoire vide, avec les mêmes
+        # restrictions, donne le même résultat qu'une base vide.
+        con = duckdb.connect(":memory:", config={"enable_external_access": False})
+    con.execute("SET lock_configuration = true")
+    return con
+
+
+def fetch_untrusted_dataframe(sql: str, db_path: str = None):
+    """
+    Exécute du SQL généré par le LLM ou envoyé par un client MCP, et
+    retourne un DataFrame.
+
+    Deux barrières : ensure_read_only_query() refuse tout ce qui n'est pas
+    une requête de lecture unique, puis la requête tourne sur
+    sandboxed_connection(), qui ne peut ni écrire ni lire d'autre fichier
+    que la base. Les requêtes construites par le code lui-même (nœuds de
+    l'agent, exports) continuent de passer par fetch_dataframe().
+
+    Raises:
+        ValueError : requête refusée par ensure_read_only_query().
+        duckdb.Error : requête refusée ou en échec dans DuckDB.
+    """
+    ensure_read_only_query(sql)
+    db_path = db_path or os.getenv("DUCKDB_PATH", "./data/analytics.duckdb")
+    con = sandboxed_connection(db_path)
+    try:
+        return con.execute(sql).fetchdf()
+    finally:
+        con.close()
+
+
 def execute_query(sql: str, db_path: str = None) -> str:
     """
     Exécute une requête SQL sur DuckDB et retourne le résultat en markdown.

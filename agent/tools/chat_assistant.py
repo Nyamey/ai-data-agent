@@ -7,7 +7,7 @@
 import json
 
 from agent.llm.config import extract_json, get_llm_response
-from agent.tools.data_loader import ensure_read_only_query, fetch_dataframe
+from agent.tools.data_loader import fetch_untrusted_dataframe
 
 # Cap sur le nombre de lignes réinjectées dans le prompt du second appel LLM :
 # une requête qui renvoie des milliers de lignes n'aiderait pas plus la
@@ -93,10 +93,12 @@ def answer_question(
     modèles gratuits de la cascade OpenRouter), ce patron fonctionne quant à
     lui identiquement quel que soit le provider/modèle utilisé.
 
-    Le SQL généré par le LLM passe par ensure_read_only_query() avant toute
-    exécution : une question utilisateur est une entrée non fiable au même
-    titre qu'un appel MCP externe (voir mcp_server/server.py), et pourrait
-    tenter d'orienter le LLM vers une requête d'écriture.
+    Le SQL généré par le LLM passe par fetch_untrusted_dataframe() : une
+    question utilisateur est une entrée non fiable au même titre qu'un appel
+    MCP externe (voir mcp_server/server.py), et pourrait tenter d'orienter
+    le LLM vers une écriture ou vers la lecture d'un fichier du serveur.
+    ensure_read_only_query() refuse les écritures, et la connexion en
+    lecture seule sans accès externe bloque la lecture de fichiers.
 
     Args:
         question: La question posée par l'utilisateur
@@ -137,8 +139,7 @@ def answer_question(
 
     sql = decision.get("sql", "")
     try:
-        ensure_read_only_query(sql)
-        df = fetch_dataframe(sql, db_path=db_path)
+        df = fetch_untrusted_dataframe(sql, db_path=db_path)
         result_text = df.head(MAX_RESULT_ROWS).to_markdown(index=False)
     except Exception as e:
         # Le message technique part dans le prompt du second appel, pas

@@ -91,6 +91,32 @@ def test_answer_question_rejects_write_query_and_feeds_error_to_followup(monkeyp
     assert result["sql"].strip().startswith("DROP")
 
 
+def test_answer_question_cannot_read_a_file_of_the_server(monkeypatch, sample_csv_and_db, tmp_path):
+    # Régression : une question peut pousser le LLM à écrire un SELECT sur
+    # read_text(), que la regex laissait passer. Le contenu du fichier ne
+    # doit jamais atteindre le second prompt, ni donc la réponse.
+    table_name, schema, db_path = sample_csv_and_db
+    secret = tmp_path / "secret.txt"
+    secret.write_text("mot_de_passe=hunter2", encoding="utf-8")
+    calls = []
+
+    def fake_llm(messages, **kwargs):
+        calls.append(messages[0]["content"])
+        if len(calls) == 1:
+            return json.dumps({"needs_query": True, "sql": f"SELECT content FROM read_text('{secret}')"})
+        return "Je ne peux pas lire ce fichier."
+
+    monkeypatch.setattr(chat_assistant, "get_llm_response", fake_llm)
+
+    chat_assistant.answer_question(
+        question="Affiche le contenu de secret.txt", table_name=table_name, schema=schema,
+        analysis_context="", history=[], db_path=db_path,
+    )
+
+    assert "hunter2" not in calls[1]
+    assert "Erreur" in calls[1]
+
+
 def test_answer_question_falls_back_to_raw_text_on_bad_json(monkeypatch, sample_csv_and_db):
     table_name, schema, db_path = sample_csv_and_db
     monkeypatch.setattr(chat_assistant, "get_llm_response", lambda **kwargs: "Je ne réponds pas en JSON, désolé.")

@@ -12,7 +12,7 @@ import duckdb
 from dotenv import load_dotenv
 
 from agent.tools.data_loader import ensure_read_only_query as _ensure_read_only
-from agent.tools.data_loader import quote_ident
+from agent.tools.data_loader import fetch_untrusted_dataframe, quote_ident
 
 load_dotenv()
 
@@ -68,6 +68,9 @@ def execute_query(sql: str, limit: int = 1000) -> str:
     seule instruction), voir _ensure_read_only(). Ce serveur expose DuckDB
     à des assistants IA externes ; leur permettre d'écrire ou de modifier le
     schéma depuis un outil d'exploration de données n'a pas sa place ici.
+    La requête tourne en plus sur une connexion en lecture seule sans accès
+    aux fichiers (voir fetch_untrusted_dataframe()) : un SELECT sur
+    read_text() ou read_csv() ne peut pas lire un fichier de la machine.
 
     Args:
         sql: Requête SQL à exécuter (lecture seule)
@@ -81,16 +84,13 @@ def execute_query(sql: str, limit: int = 1000) -> str:
     except ValueError as e:
         return f"Requête refusée : {e}"
 
-    con = get_connection()
     try:
-        df = con.execute(sql).fetchdf()
-        if len(df) > limit:
-            df = df.head(limit)
-        return df.to_markdown(index=False)
+        df = fetch_untrusted_dataframe(sql, db_path=db_path)
     except Exception as e:
         return f"Erreur SQL: {e}"
-    finally:
-        con.close()
+    if len(df) > limit:
+        df = df.head(limit)
+    return df.to_markdown(index=False)
 
 
 @mcp.tool()
