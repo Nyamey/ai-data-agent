@@ -1,4 +1,4 @@
-%% Workflow de l'agent ai-data-agent (LangGraph) -- reflète les arêtes
+%% Workflow de l'agent ai-data-agent (LangGraph), qui reflète les arêtes
 %% réelles de agent/graph.py (build_agent_graph). Rendu automatiquement
 %% par GitHub dans un bloc ```mermaid
 flowchart TD
@@ -7,7 +7,7 @@ flowchart TD
     B -->|erreur| X[Fin<br/>rejet ou erreur]
     C -->|rejeté| X
     C -->|approuvé| D[4. Construction<br/>métrique via DuckDB]
-    D --> E[5. Test<br/>facteurs explicatifs]
+    D --> E[5. Répartition<br/>par dimension]
     E --> F[6. Validation<br/>cohérence · reproductibilité]
     F --> G[7. Recommandations<br/>classées par impact / faisabilité]
     G --> H[8. Export<br/>Excel · PowerPoint]

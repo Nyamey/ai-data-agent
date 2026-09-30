@@ -13,7 +13,7 @@ def recommend_node(state: AgentState) -> dict:
     """
     state.status = AnalysisStatus.RECOMMENDING
     
-    significant_dims = [
+    uneven_dims = [
         dim for dim, s in (state.statistical_tests or {}).items() if s.get("significant")
     ]
 
@@ -24,22 +24,24 @@ def recommend_node(state: AgentState) -> dict:
 
     Rétention hebdomadaire : {state.weekly_retention}
 
-    Analyse des facteurs : {json.dumps(state.driver_analysis, default=str, indent=2)}
+    Répartition par dimension (effectif par catégorie) : {json.dumps(state.driver_analysis, default=str, indent=2)}
 
-    Tests de significativité statistique (chi², p < 0.05 = significatif) :
+    Test du chi² d'ajustement par dimension (H0 : même effectif dans chaque
+    catégorie ; "significant": true veut dire p < 0.05, répartition inégale) :
     {json.dumps(state.statistical_tests, default=str, indent=2)}
-    Dimensions statistiquement significatives : {significant_dims or "aucune"}
+    Dimensions à répartition inégale : {uneven_dims or "aucune"}
 
     Validation : {json.dumps(state.validation_checks, default=str, indent=2)}
     """
 
     prompt = f"""
     Tu es un analyste de données IA expert. Basé sur les résultats suivants,
-    formule des recommandations actionnables. Priorise les dimensions
-    statistiquement significatives (p < 0.05) : un écart significatif est un
-    vrai signal, un écart non significatif peut n'être que du bruit
-    d'échantillonnage. Dis-le explicitement si tu t'appuies sur une
-    dimension non significative.
+    formule des recommandations actionnables. Le test du chi² dit seulement
+    si les effectifs sont répartis de façon inégale entre les catégories
+    d'une dimension : il décrit l'échantillon, il ne compare pas la métrique
+    entre catégories. Ne présente donc aucune dimension comme un facteur
+    explicatif ou une cause sur cette base. Si une recommandation suppose un
+    tel effet, dis que c'est une hypothèse à vérifier.
 
     {context}
 

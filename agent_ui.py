@@ -30,7 +30,7 @@ _STEP_LABELS = {
     "cadrage": "Cadrage de la question",
     "inspection": "Inspection des données",
     "construction": "Construction de la métrique",
-    "test": "Test des facteurs explicatifs",
+    "test": "Contrôle de répartition par dimension",
     "validation": "Validation des résultats",
     "recommandations": "Formulation des recommandations",
     "export": "Génération des livrables (Excel / PowerPoint)",
@@ -407,7 +407,11 @@ def _render_single_agent_run(run_key: str, current_source: tuple, runs: dict, ll
 
         driver_analysis = final.get("driver_analysis") or []
         if driver_analysis:
-            st.subheader("Facteurs explicatifs")
+            st.subheader("Répartition par dimension")
+            st.caption(
+                "Effectif par catégorie, et test du chi² d'ajustement : il dit si les "
+                "catégories ont des effectifs inégaux, pas si une dimension influence la métrique."
+            )
             for d in driver_analysis:
                 with st.expander(d["dimension"]):
                     if "error" in d:
@@ -514,9 +518,12 @@ def _build_analysis_context(values: dict, final: dict) -> str:
         lines.append(f"Résultat construit : {weekly['label']}")
 
     stats = final.get("statistical_tests") or {}
-    significant = [dim for dim, s in stats.items() if s.get("significant")]
-    if significant:
-        lines.append(f"Dimensions statistiquement significatives (chi², p < 0.05) : {', '.join(significant)}")
+    uneven = [dim for dim, s in stats.items() if s.get("significant")]
+    if uneven:
+        lines.append(
+            f"Dimensions à répartition inégale (chi² d'ajustement, p < 0.05), "
+            f"sans lien établi avec la métrique : {', '.join(uneven)}"
+        )
 
     recommendations = final.get("recommendations") or []
     if recommendations:

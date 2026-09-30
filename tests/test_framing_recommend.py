@@ -137,7 +137,7 @@ def test_recommend_node_parses_realistic_json_response(monkeypatch):
     assert "1 recommandations" in result["audit_trail"][-1]
 
 
-def test_recommend_node_prioritizes_significant_dimensions_in_prompt(monkeypatch):
+def test_recommend_node_describes_uneven_dimensions_without_calling_them_drivers(monkeypatch):
     _set_only_groq_key(monkeypatch)
     captured = {}
 
@@ -157,7 +157,9 @@ def test_recommend_node_prioritizes_significant_dimensions_in_prompt(monkeypatch
     recommend_node(state)
 
     assert "platform" in captured["prompt"]
-    assert "Dimensions statistiquement significatives" in captured["prompt"]
+    assert "Dimensions à répartition inégale" in captured["prompt"]
+    # Le prompt doit interdire de présenter le chi² comme un facteur explicatif.
+    assert "comme un facteur explicatif" in " ".join(captured["prompt"].split())
 
 
 def test_recommend_node_falls_back_to_raw_text_when_unparseable(monkeypatch):

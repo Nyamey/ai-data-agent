@@ -20,8 +20,8 @@ def test_add_weekly_retention_creates_sheet_with_data(tmp_path):
 def test_sheet_titles_are_deduplicated(tmp_path):
     gen = ExcelGenerator()
     df = pd.DataFrame({"a": [1], "b": [2]})
-    gen.add_driver_analysis(df, title="Facteur - plateforme")
-    gen.add_driver_analysis(df, title="Facteur - plateforme")
+    gen.add_driver_analysis(df, title="Répartition - plateforme")
+    gen.add_driver_analysis(df, title="Répartition - plateforme")
     path = str(tmp_path / "out.xlsx")
     gen.save(path)
 
@@ -34,7 +34,7 @@ def test_sheet_titles_are_deduplicated(tmp_path):
 def test_sheet_title_truncated_to_excel_limit(tmp_path):
     gen = ExcelGenerator()
     df = pd.DataFrame({"a": [1]})
-    long_title = "Facteur - " + "x" * 50
+    long_title = "Répartition - " + "x" * 50
     gen.add_driver_analysis(df, title=long_title)
     path = str(tmp_path / "out.xlsx")
     gen.save(path)
@@ -136,12 +136,12 @@ def test_driver_analysis_neutralizes_formula_injection(tmp_path):
         "plateforme": ['=HYPERLINK("http://evil")', "+1+1", "mobile"],
         "nb_entites": [3, 2, 40],
     })
-    gen.add_driver_analysis(df, title="Facteur - plateforme")
+    gen.add_driver_analysis(df, title="Répartition - plateforme")
     path = str(tmp_path / "out.xlsx")
     gen.save(path)
 
     wb = openpyxl.load_workbook(path)
-    ws = wb["Facteur - plateforme"]
+    ws = wb["Répartition - plateforme"]
     values = [row[0] for row in ws.iter_rows(min_row=2, values_only=True)]
     assert values[0].startswith("'=")
     assert values[1].startswith("'+")

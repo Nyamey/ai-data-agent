@@ -39,7 +39,7 @@ def export_node(state: AgentState) -> dict:
         for d in state.driver_analysis or []:
             if d.get("query"):
                 df = fetch_dataframe(d["query"], db_path=db_path)
-                excel.add_driver_analysis(df, title=f"Facteur - {d['dimension']}")
+                excel.add_driver_analysis(df, title=f"Répartition - {d['dimension']}")
 
         excel.add_validation_checks(state.validation_checks or {})
         excel_path = str(output_dir / f"rapport_{stamp}.xlsx")
@@ -47,8 +47,11 @@ def export_node(state: AgentState) -> dict:
 
         findings = [weekly["label"]] if weekly.get("label") else []
         for dim, stat in (state.statistical_tests or {}).items():
-            marker = "significatif" if stat.get("significant") else "non significatif"
-            findings.append(f"{dim} : p={stat.get('p_value')} ({marker})")
+            marker = (
+                "effectifs inégaux entre catégories" if stat.get("significant")
+                else "pas d'écart net avec une répartition égale"
+            )
+            findings.append(f"{dim} : {marker} (chi² d'ajustement, p={stat.get('p_value')})")
         if not findings:
             findings = ["Aucune observation disponible."]
 

@@ -1,4 +1,4 @@
-# agent/nodes/test.py : nœud 4, tests des facteurs explicatifs
+# agent/nodes/test.py : nœud 4, contrôle de répartition par dimension
 from scipy import stats as scipy_stats
 from agent.state import AgentState, AnalysisStatus
 from agent.tools.data_loader import fetch_dataframe, quote_ident
@@ -15,18 +15,21 @@ MAX_DIMENSION_CATEGORIES = 30
 
 def test_node(state: AgentState) -> dict:
     """
-    Nœud 4 : Test.
+    Nœud 4 : Contrôle de répartition.
 
-    Compare la métrique selon les colonnes catégorielles disponibles
-    (ex. plateforme, région, segment...). Agnostique au schéma : les
-    colonnes exclues (identifiant d'entité, dates) sont celles détectées
-    par l'inspection, pas des noms fixes.
+    Pour chaque colonne catégorielle disponible (ex. plateforme, région,
+    segment...), compte les entités (ou les lignes) par catégorie.
+    Agnostique au schéma : les colonnes exclues (identifiant d'entité,
+    dates) sont celles détectées par l'inspection, pas des noms fixes.
 
-    Pour chaque dimension, un test du chi² d'ajustement (H0 : répartition
-    uniforme entre catégories) évalue si l'écart observé est statistiquement
-    significatif (p < 0.05) ou relève du bruit d'échantillonnage. Les
-    dimensions trop fragmentées (> MAX_DIMENSION_CATEGORIES catégories) sont
-    exclues de ce test, voir MAX_DIMENSION_CATEGORIES.
+    Pour chaque dimension, un test du chi² d'ajustement (H0 : même effectif
+    dans chaque catégorie) indique si la répartition est inégale (p < 0.05).
+    C'est une description de l'échantillon : ce test ne compare pas la
+    métrique entre catégories et ne dit pas si une dimension l'influence,
+    il ne doit donc pas être présenté comme une analyse de facteurs
+    explicatifs. Les dimensions trop fragmentées
+    (> MAX_DIMENSION_CATEGORIES catégories) sont exclues, voir
+    MAX_DIMENSION_CATEGORIES.
     """
     state.status = AnalysisStatus.TESTING
 
@@ -95,13 +98,15 @@ def test_node(state: AgentState) -> dict:
         except Exception as e:
             driver_results.append({"dimension": col, "error": str(e)})
 
-    n_significant = sum(1 for s in statistical_tests.values() if s["significant"])
+    # "significant" garde son nom dans les résultats (interface, export,
+    # tests) mais veut dire ici "répartition inégale", rien de plus.
+    n_uneven = sum(1 for s in statistical_tests.values() if s["significant"])
     return {
         "status": AnalysisStatus.VALIDATING,
         "driver_analysis": driver_results,
         "statistical_tests": statistical_tests,
         "audit_trail": state.audit_trail + [
-            f"Test : {len(driver_results)} dimensions analysées, "
-            f"{n_significant} statistiquement significative(s) (p < 0.05)"
+            f"Répartition : {len(driver_results)} dimensions décrites, "
+            f"{n_uneven} à répartition inégale (chi² d'ajustement, p < 0.05)"
         ],
     }

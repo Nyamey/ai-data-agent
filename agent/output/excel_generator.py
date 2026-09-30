@@ -16,7 +16,7 @@ class ExcelGenerator:
 
     Onglets générés :
     1. Métrique construite (ex. rétention hebdomadaire)
-    2. Analyse des facteurs, un onglet par dimension testée
+    2. Répartition par dimension, un onglet par dimension décrite
     3. Validation
     """
 
@@ -70,15 +70,15 @@ class ExcelGenerator:
         """Ajoute l'onglet de métrique construite (rétention hebdomadaire ou équivalent générique)."""
         self._add_sheet_with_data(title, df, chart_type="line")
 
-    def add_driver_analysis(self, df: pd.DataFrame, title: str = "Analyse Facteurs"):
-        """Ajoute un onglet d'analyse de facteur (appelable plusieurs fois, un par dimension)."""
+    def add_driver_analysis(self, df: pd.DataFrame, title: str = "Répartition"):
+        """Ajoute un onglet de répartition par dimension (appelable plusieurs fois, un par dimension)."""
         self._add_sheet_with_data(title, df, chart_type="bar")
     
     def add_cleaned_data(self, df: pd.DataFrame, title: str = "Données nettoyées"):
         """Ajoute la donnée nettoyée elle-même, suivie d'une feuille de
         statistiques descriptives (df.describe()), pensée pour un export
         autonome des données de l'analyse, séparé du rapport de résultats
-        (métrique construite, facteurs, validation, recommandations).
+        (métrique construite, répartitions, validation, recommandations).
 
         df.describe() décrit les colonnes numériques par défaut, ou bascule
         automatiquement sur des statistiques catégorielles (count/unique/
